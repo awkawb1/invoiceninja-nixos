@@ -1,10 +1,5 @@
-{ config, pkgs, modulesPath, ... }:
+{ modulesPath, ... }:
 
-let
-  invoice-ninja-script = pkgs.writers.writeBashBin "create-invoice-ninja-user" ''
-    invoice-ninja-manage ninja:
-  '';
-in
 {
   imports = [
     (modulesPath + "/profiles/qemu-guest.nix")
@@ -15,7 +10,7 @@ in
 
   nixpkgs.config.allowUnfree = true;
 
-  users.users.test-user = {
+  users.users.test = {
     isNormalUser = true;
     extraGroups = [ "wheel" ];
     initialPassword = "testing";
@@ -31,8 +26,4 @@ in
   networking.firewall.enable = false;
 
   services.resolved.enable = true;
-
-  services.xserver.enable = true;
-  services.displayManager.sddm.enable = true;
-  services.xserver.desktopManager.xfce.enable = true;
 }
