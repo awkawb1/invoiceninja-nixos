@@ -1,0 +1,13 @@
+diff --git a/config/filesystems.php b/config/filesystems.php
+index a104af7a81..a4c87ba3ff 100644
+--- a/config/filesystems.php
++++ b/config/filesystems.php
+@@ -37,7 +37,7 @@ return [
+             'root' => base_path(),
+             'permissions' => [
+                 'file' => [
+-                    'public' => 0664,
++                    'public' => 0444,
+                     'private' => 0600,
+                 ],
+                 'dir' => [

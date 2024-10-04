@@ -11,7 +11,7 @@ let
   # PHP environment
   phpPackage = cfg.phpPackage.buildEnv {
     extensions = { enabled, all }: enabled ++ (with all;
-      [ bcmath ctype curl fileinfo gd gmp iconv mbstring mysqli openssl pdo tokenizer zip ]
+      [ bcmath ctype curl fileinfo gd gmp iconv imagick mbstring mysqli openssl pdo tokenizer zip ]
     );
 
     extraConfig = "memory_limit = 1024M";
@@ -141,6 +141,18 @@ in
       '';
     };
 
+    adminEmail = lib.mkOption {
+      type = lib.types.str;
+      default = "example@email.com";
+      description = "Email address of the first (admin) account for this Invoice Ninja installation";
+    };
+
+    adminPassword = lib.mkOption {
+      type = lib.types.str;
+      default = "example";
+      description = "Password of the first (admin) account for this Invoice Ninja installation";
+    };
+
     database = {
       createLocally = lib.mkOption {
         type = lib.types.bool;
@@ -155,31 +167,12 @@ in
       };
     };
 
-    enableACME = lib.mkOption {
+    caddy = lib.mkOption {
       type = lib.types.bool;
-      default = false;
+      default = true;
       description = ''
-        				Whether an ACME certificate should be used to secure connections to the server.
-        			'';
-    };
-
-    nginx = lib.mkOption {
-      type = lib.types.nullOr (lib.types.submodule
-        (import <nixpkgs/nixos/modules/services/web-servers/nginx/vhost-options.nix> {
-          inherit config lib;
-        }));
-      default = null;
-      example = ''
-        {
-          enableACME = true;
-          forceHttps = true;
-        }
-      '';
-      description = ''
-        With this option, you can customize an nginx virtual host which already has sensible defaults
-        for Invoice Ninja. Set to {} if you do not need any customization to the virtual host.
-        If enabled, then by default, the {option}`serverName` is `''${domain}`. If this is set to
-        null (the default), no nginx virtualHost will be configured.
+        Whether to enable a preconfigured Caddy server to serve
+        Invoice Ninja.
       '';
     };
   };
@@ -225,6 +218,7 @@ in
           NINJA_ENVIRONMENT = lib.mkDefault "selfhost";
           PDF_GENERATOR = lib.mkDefault "snappdf";
           SNAPPDF_CHROMIUM_PATH = lib.mkDefault "${chromium}/bin/chromium";
+          PRECONFIGURED_INSTALL = lib.mkDefault true;
         })
         (lib.mkIf (cfg.database.createLocally) {
           DB_CONNECTION = lib.mkDefault "mysql";
@@ -235,78 +229,30 @@ in
         })
       ];
 
-    services.phpfpm.pools.invoiceninja = {
+    services.phpfpm.pools.invoice-ninja = {
       inherit user group phpPackage;
       inherit (cfg.phpfpm) settings;
     };
 
-    users.users."${config.services.nginx.user}" = lib.mkIf (cfg.nginx != null) { extraGroups = [ cfg.group ]; };
-    services.nginx = lib.mkIf (cfg.nginx != null) {
+    users.users."${config.services.caddy.user}" = lib.mkIf (cfg.caddy != false) { extraGroups = [ cfg.group ]; };
+    services.caddy =
+      let
+        caddyDomain = if (cfg.domain == "localhost") then ":80" else cfg.domain;
+      in
+      lib.mkIf (cfg.caddy != false) {
       enable = true;
 
-      clientMaxBodySize = "20m";
+      globalConfig = lib.mkIf (cfg.domain == "localhost") ''
+        auto_https disable_redirects
+      '';
 
-      recommendedGzipSettings = true;
-      recommendedOptimisation = true;
-      recommendedProxySettings = true;
-      recommendedTlsSettings = true;
-
-      appendHttpConfig = ''
-        				# Add HSTS header with preloading to HTTPS requests.
-        				# Adding this header to HTTP requests is discouraged
-        				map $scheme $hsts_header {
-        						https   "max-age=31536000; includeSubdomains; preload";
-        				}
-        				add_header Strict-Transport-Security $hsts_header;
-
-        				# Minimize information leaked to other domains
-        				add_header 'Referrer-Policy' 'origin-when-cross-origin';
-
-        				# Disable embedding as a frame
-        				add_header X-Frame-Options DENY;
-
-        				# Prevent injection of code in other mime types (XSS Attacks)
-        				add_header X-Content-Type-Options nosniff;
-
-        				# This might create errors
-        				proxy_cookie_path / "/; secure; HttpOnly; SameSite=strict";
-        			'';
-
-      virtualHosts."${cfg.domain}" = lib.mkMerge [
-        cfg.nginx
-        {
-          inherit (cfg) enableACME;
-          forceSSL = lib.mkDefault (if cfg.enableACME then true else false);
-          root = lib.mkForce "${invoice-ninja}/public/";
-          locations."= /index.php" = {
-            extraConfig = ''
-              							fastcgi_pass unix:${config.services.phpfpm.pools.invoiceninja.socket};
-              							fastcgi_index index.php;
-              						'';
-          };
-          locations."~ \\.php$" = {
-            return = 403;
-          };
-          locations."/" = {
-            tryFiles = "$uri $uri/ /index.php?$query_string";
-            extraConfig = ''
-              							# Add your rewrite rule for non-existent files
-              							if (!-e $request_filename) {
-              									rewrite ^(.+)$ /index.php?q=$1 last;
-              							}
-              						'';
-          };
-          locations."~ /\\.ht" = {
-            extraConfig = ''
-              							deny all;
-              						'';
-          };
-          extraConfig = ''
-            						index index.php index.html index.htm;
-            						error_page 404 /index.php;
-            					'';
-        }
-      ];
+      virtualHosts."${caddyDomain}".extraConfig = ''
+        encode zstd gzip
+        root * ${invoice-ninja}/public/
+        php_fastcgi unix/${config.services.phpfpm.pools.invoice-ninja.socket}
+        try_files {path} {path}/ /public/{path} /index.php?{query}
+        file_server
+      '';
     };
 
     services.mysql = lib.mkIf (cfg.database.createLocally) {
@@ -354,7 +300,7 @@ in
       wantedBy = [ "multi-user.target" ];
       after = lib.optional cfg.database.createLocally "mysql.service";
       requires = lib.optional cfg.database.createLocally "mysql.service";
-      path = with pkgs; [ bash invoice-ninja-manage rsync ] ++ extraPrograms;
+      path = with pkgs; [ bash invoice-ninja-manage rsync config.services.mysql.package ] ++ extraPrograms;
 
       serviceConfig = {
         Type = "oneshot";
@@ -376,37 +322,30 @@ in
                 # Concatenate non-secret .env and secret .env
                 rm -f ${cfg.dataDir}/.env
                 cp --no-preserve=all ${configFile} ${cfg.dataDir}/.env
-                # echo -e '\n' >> ${cfg.dataDir}/.env
+                echo -e '\n' >> ${cfg.dataDir}/.env
                 cat "$CREDENTIALS_DIRECTORY/env-secrets" >> ${cfg.dataDir}/.env
 
                 # Link the static storage (package provided) to the runtime storage
                 # Necessary for cities.json and static images.
-                mkdir -p ${cfg.dataDir}/storage
                 rsync -av --no-perms ${invoice-ninja}/storage-static/ ${cfg.dataDir}/storage
-                chmod -R +w ${cfg.dataDir}/storage
-
-                chmod g+x ${cfg.dataDir}/storage ${cfg.dataDir}/storage/app
-                chmod -R g+rX ${cfg.dataDir}/storage/app/public
-
+                
                 # Link the app.php in the runtime folder.
                 # We cannot link the cache folder only because bootstrap folder needs to be writeable.
                 ln -sf ${invoice-ninja}/bootstrap-static/app.php ${cfg.runtimeDir}/app.php
 
-        				# Link the static public/images (package provided) to the runtime public/public/images
-        				mkdir -p ${cfg.dataDir}/public/images
-        				rsync -av --no-perms ${invoice-ninja}/public/images-static/ ${cfg.dataDir}/public/images
-        				
-        				# Link the static public/react (package provided) to the runtime public/public/react
-        				mkdir -p ${cfg.dataDir}/public/react
-        				rsync -av --no-perms ${invoice-ninja}/public/react-static/ ${cfg.dataDir}/public/react
+                # Perform the first migration
+                [[ ! -f ${cfg.dataDir}/.initial-migration ]] && invoice-ninja-manage migrate --force && touch ${cfg.dataDir}/.initial-migration
 
-        				chmod -R +w ${cfg.dataDir}/public
-        				chmod -R g+rwX ${cfg.dataDir}/public
-        				
-        				# Link the static vite.config.ts (package provided to the runtime vite.config.ts
-        				rsync -av --no-perms ${invoice-ninja}/vite.config.ts.static ${cfg.dataDir}/vite.config.ts
-        				chmod +w ${cfg.dataDir}/vite.config.ts
-        				chmod g+rw ${cfg.dataDir}/vite.config.ts
+                # Create Invoice Ninja admin account
+                [[ ! -f ${cfg.dataDir}/.admin-created ]] \
+                  && invoice-ninja-manage ninja:create-account --email=${cfg.adminEmail} --password=${cfg.adminPassword} \
+                  && touch ${cfg.dataDir}/.admin-created
+                
+                # Recent releases make the React interface default
+                # Currently this is broken so we switch back to the Flutter interface
+                [[ ! -f ${cfg.dataDir}/.react-disabled ]] \
+                  && mysql -D ${cfg.database.name} -e 'UPDATE accounts SET set_react_as_default_ap = 0;' \
+                  && touch ${cfg.dataDir}/.react-disabled
 
                 invoice-ninja-manage route:cache
                 invoice-ninja-manage view:cache
@@ -414,11 +353,32 @@ in
       '';
     };
 
-    systemd.tmpfiles.rules = [
-      # Cache must live across multiple systemd units runtimes.
-      "d ${cfg.runtimeDir}/                         0700 ${user} ${group} - -"
-      "d ${cfg.runtimeDir}/cache                    0700 ${user} ${group} - -"
-    ];
+    systemd.tmpfiles.settings."10-invoice-ninja" = lib.attrsets.genAttrs [
+      cfg.dataDir
+      "${cfg.dataDir}/storage"
+      "${cfg.dataDir}/storage/app"
+      "${cfg.dataDir}/storage/app/public"
+      "${cfg.dataDir}/storage/framework"
+      "${cfg.dataDir}/storage/framework/cache"
+      "${cfg.dataDir}/storage/framework/sessions"
+      "${cfg.dataDir}/storage/framework/views"
+      "${cfg.dataDir}/storage/logs"
+    ] (n: {
+      d = {
+        user = user;
+        group = group;
+        mode = "0770";
+      };
+    }) // lib.attrsets.genAttrs [
+      cfg.runtimeDir
+      "${cfg.runtimeDir}/cache"
+    ] (n: {
+      d = {
+        user = user;
+        group = group;
+        mode = "0770";
+      };
+    });
   };
 }
 
