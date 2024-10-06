@@ -19,7 +19,6 @@
   services.invoice-ninja = {
     enable = true;
     database.createLocally = true;
-    caddy = true;
     secretFile = ./test-secrets.env;
   };
 

@@ -7,9 +7,6 @@
 , runtimeDir ? "/run/invoice-ninja"
 }:
 
-let
-  configFilesystemsPatch = "./config-filesystems.patch";
-in
 php.buildComposerProject (finalAttrs: {
   pname = "invoice-ninja";
   version = "5.10.29";
@@ -24,7 +21,7 @@ php.buildComposerProject (finalAttrs: {
   vendorHash = "sha256-NVvx1aKhbC5XuXt2+gS2c3ulNWoCKrYNnEleBuAcftQ=";
 
   # Patch sources to allow more restrictive permissions
-  patches = [ ./config-filesystems.patch ];
+  # patches = [ ./config-filesystems.patch ];
 
   # Upstream composer.json has invalid license, webpatser/laravel-countries package is pointing
   # to commit-ref, and php required in require and require-dev

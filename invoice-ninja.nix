@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{ config
+, lib
+, pkgs
+, modulesPath
+, ... }:
+
 
 let
   cfg = config.services.invoice-ninja;
@@ -90,7 +95,7 @@ in
       description = "How often the Invoice Ninja cron task should run.";
     };
 
-    domain = lib.mkOption {
+    hostName = lib.mkOption {
       type = lib.types.str;
       default = "localhost";
       description = ''
@@ -157,7 +162,7 @@ in
       createLocally = lib.mkOption {
         type = lib.types.bool;
         default = true;
-        description = "a local database using UNIX socket authentication";
+        description = "A local database using UNIX socket authentication";
       };
 
       name = lib.mkOption {
@@ -167,17 +172,66 @@ in
       };
     };
 
-    caddy = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = ''
-        Whether to enable a preconfigured Caddy server to serve
-        Invoice Ninja.
-      '';
+    maxUploadSize = lib.mkOption {
+      type = lib.types.str;
+      default = "8M";
+      description = "Maximum allowed upload size to Invoice Ninja.";
+    };
+
+    webserver = {
+      caddy = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Whether to enable the Caddy server to serve Invoice Ninja.";
+        };
+
+        config = lib.mkOption {
+          type = lib.types.submodule (
+            (import (modulesPath + "/services/web-servers/caddy/vhost-options.nix") { cfg = config.services.caddy; }) {
+              inherit lib; config = cfg; name = (if (cfg.hostName == "localhost") then ":80" else cfg.hostName);
+            }
+          );
+          default = { };
+          description = ''
+            Extra configuration for the Caddy virtual host of Invoice Ninja.
+                Set to `{ }` to use the default configuration
+          '';
+        };
+      };
+
+      nginx = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Whether to enable Nginx server to serve Invoice Ninja.
+          '';
+        };
+
+        config = lib.mkOption {
+          type = lib.types.submodule (
+            (import (modulesPath + "/services/web-servers/nginx/vhost-options.nix") { inherit config lib; })
+          );
+          default = { };
+          description = ''
+            Extra configuration for the Nginx virtual host of Invoice Ninja.
+                Set to `{ }` to use the default configuration
+          '';
+        };
+      };
     };
   };
 
   config = lib.mkIf cfg.enable {
+    # FIXME Caddy and Nginx should be mutually exclusive
+    assertions = [
+      {
+        assertion = (cfg.webserver.nginx.enable || cfg.webserver.caddy.enable);
+        message = "Either the Caddy or Nginx webserver needs to be enabled.";
+      }
+    ];
+
     users.users.invoiceninja = lib.mkIf (cfg.user == "invoiceninja") {
       isSystemUser = true;
       home = cfg.dataDir;
@@ -191,10 +245,10 @@ in
 
     services.invoice-ninja.settings =
       let
-        app_http_url = "http://${cfg.domain}";
-        app_https_url = "https://${cfg.domain}";
-        react_http_url = "http://${cfg.domain}:3001";
-        react_https_url = "https://${cfg.domain}:3001";
+        app_http_url = "http://${cfg.hostName}";
+        app_https_url = "https://${cfg.hostName}";
+        react_http_url = "http://${cfg.hostName}:3001";
+        react_https_url = "https://${cfg.hostName}:3001";
         chromium = lib.lists.findSingle (x: x == pkgs.chromium) "none" "multiple" extraPrograms;
       in
       lib.mkMerge [
@@ -202,8 +256,8 @@ in
           APP_NAME = lib.mkDefault "\"Invoice Ninja\"";
           APP_ENV = lib.mkDefault "production";
           APP_DEBUG = lib.mkDefault false;
-          APP_URL = lib.mkDefault (if (cfg.domain != "localhost") then "${app_https_url}" else "${app_http_url}");
-          REACT_URL = lib.mkDefault (if (cfg.domain != "localhost") then "${react_https_url}" else "${react_http_url}");
+          APP_URL = lib.mkDefault (if (cfg.hostName != "localhost") then "${app_https_url}" else "${app_http_url}");
+          REACT_URL = lib.mkDefault (if (cfg.hostName != "localhost") then "${react_https_url}" else "${react_http_url}");
           DB_CONNECTION = lib.mkDefault "mysql";
           MULTI_DB_ENABLED = lib.mkDefault false;
           DEMO_MODE = lib.mkDefault false;
@@ -213,7 +267,7 @@ in
           QUEUE_CONNECTION = lib.mkDefault "database";
           SESSION_DRIVER = lib.mkDefault "file";
           SESSION_LIFETIME = lib.mkDefault "120";
-          REQUIRE_HTTPS = lib.mkDefault (if (cfg.domain != "localhost") then true else false);
+          REQUIRE_HTTPS = lib.mkDefault (if (cfg.hostName != "localhost") then true else false);
           TRUSTED_PROXIES = lib.mkDefault "127.0.0.1";
           NINJA_ENVIRONMENT = lib.mkDefault "selfhost";
           PDF_GENERATOR = lib.mkDefault "snappdf";
@@ -232,27 +286,72 @@ in
     services.phpfpm.pools.invoice-ninja = {
       inherit user group phpPackage;
       inherit (cfg.phpfpm) settings;
+
+      phpOptions = ''
+        post_max_size = ${cfg.maxUploadSize}
+        upload_max_filesize = ${cfg.maxUploadSize}
+        max_execution_time = 600;
+      '';
     };
 
-    users.users."${config.services.caddy.user}" = lib.mkIf (cfg.caddy != false) { extraGroups = [ cfg.group ]; };
-    services.caddy =
-      let
-        caddyDomain = if (cfg.domain == "localhost") then ":80" else cfg.domain;
-      in
-      lib.mkIf (cfg.caddy != false) {
-      enable = true;
+    users.users."${config.services.nginx.user}" = lib.mkIf (cfg.webserver.nginx.enable == true) { extraGroups = [ cfg.group ]; };
+    services.nginx = lib.mkIf ((cfg.webserver.nginx.enable == true) && (cfg.webserver.caddy.enable == false)) {
+      inherit (cfg.webserver.nginx) enable;
 
-      globalConfig = lib.mkIf (cfg.domain == "localhost") ''
+      recommendedTlsSettings = true;
+      recommendedGzipSettings = true;
+      recommendedProxySettings = true;
+      recommendedOptimisation = true;
+
+      clientMaxBodySize = cfg.maxUploadSize;
+
+      virtualHosts."${cfg.hostName}" = lib.mkMerge [
+        cfg.webserver.nginx.config
+        {
+          root = lib.mkForce "${invoice-ninja}/public";
+          locations = {
+            "/" = {
+              tryFiles = "$uri $uri/ /index.php?$query_string";
+              extraConfig = ''
+                if (!-e $request_filename) {
+                    rewrite ^(.+)$ /index.php?q=$1 last;
+                }
+              '';
+            };
+            "~ \\.php$".extraConfig = ''
+              fastcgi_split_path_info ^(.+\.php)(/.+)$;
+              fastcgi_pass unix:${config.services.phpfpm.pools.invoice-ninja.socket};
+              fastcgi_index index.php;
+            '';
+            "~ /\\.ht".extraConfig = "deny all;";
+          };
+          extraConfig = ''
+            index index.html index.htm index.php;
+            error_page 404 /index.php;
+          '';
+        }
+      ];
+    };
+
+    users.users."${config.services.caddy.user}" = lib.mkIf (cfg.webserver.caddy.enable == true) { extraGroups = [ cfg.group ]; };
+    services.caddy = lib.mkIf ((cfg.webserver.caddy.enable == true) && (cfg.webserver.nginx.enable == false)) {
+      inherit (cfg.webserver.caddy) enable;
+
+      globalConfig = lib.mkIf (cfg.hostName == "localhost") ''
         auto_https disable_redirects
       '';
 
-      virtualHosts."${caddyDomain}".extraConfig = ''
-        encode zstd gzip
-        root * ${invoice-ninja}/public/
-        php_fastcgi unix/${config.services.phpfpm.pools.invoice-ninja.socket}
-        try_files {path} {path}/ /public/{path} /index.php?{query}
-        file_server
-      '';
+      virtualHosts."${cfg.hostName}" = lib.mkMerge [
+        cfg.webserver.caddy.config
+        {
+          extraConfig = ''
+            encode zstd gzip
+            root * ${invoice-ninja}/public
+            php_fastcgi unix/${config.services.phpfpm.pools.invoice-ninja.socket}
+            file_server
+          '';
+        }
+      ];
     };
 
     services.mysql = lib.mkIf (cfg.database.createLocally) {
@@ -363,13 +462,6 @@ in
       "${cfg.dataDir}/storage/framework/sessions"
       "${cfg.dataDir}/storage/framework/views"
       "${cfg.dataDir}/storage/logs"
-    ] (n: {
-      d = {
-        user = user;
-        group = group;
-        mode = "0770";
-      };
-    }) // lib.attrsets.genAttrs [
       cfg.runtimeDir
       "${cfg.runtimeDir}/cache"
     ] (n: {
