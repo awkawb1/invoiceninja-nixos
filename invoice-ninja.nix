@@ -16,7 +16,7 @@ let
   # PHP environment
   phpPackage = cfg.phpPackage.buildEnv {
     extensions = { enabled, all }: enabled ++ (with all;
-      [ bcmath ctype curl fileinfo gd gmp iconv imagick mbstring mysqli openssl pdo tokenizer zip ]
+      [ bcmath ctype curl fileinfo gd gmp iconv imagick intl mbstring mysqli openssl pdo soap tokenizer zip ]
     );
 
     extraConfig = "memory_limit = 1024M";
@@ -245,10 +245,13 @@ in
 
     services.invoice-ninja.settings =
       let
-        app_http_url = "http://${cfg.hostName}";
-        app_https_url = "https://${cfg.hostName}";
-        react_http_url = "http://${cfg.hostName}:3001";
-        react_https_url = "https://${cfg.hostName}:3001";
+        url = ({ hostName, react ? false }: 
+          if (hostName == "localhost")
+            then
+              (if (react == true) then ("http://" + hostName + ":3001") else ("http://" + hostName))
+            else
+              (if (react == true) then ("https://" + hostName + ":3001") else ("https://" + hostName))
+          );
         chromium = lib.lists.findSingle (x: x == pkgs.chromium) "none" "multiple" extraPrograms;
       in
       lib.mkMerge [
@@ -256,8 +259,8 @@ in
           APP_NAME = lib.mkDefault "\"Invoice Ninja\"";
           APP_ENV = lib.mkDefault "production";
           APP_DEBUG = lib.mkDefault false;
-          APP_URL = lib.mkDefault (if (cfg.hostName != "localhost") then "${app_https_url}" else "${app_http_url}");
-          REACT_URL = lib.mkDefault (if (cfg.hostName != "localhost") then "${react_https_url}" else "${react_http_url}");
+          APP_URL = lib.mkDefault (url { hostName = cfg.hostName; });
+          REACT_URL = lib.mkDefault (url { hostName = cfg.hostName; react = true; });
           DB_CONNECTION = lib.mkDefault "mysql";
           MULTI_DB_ENABLED = lib.mkDefault false;
           DEMO_MODE = lib.mkDefault false;
@@ -310,6 +313,11 @@ in
         {
           root = lib.mkForce "${invoice-ninja}/public";
           locations = {
+            "= /index.php".extraConfig = '' 
+              fastcgi_split_path_info ^(.+\.php)(/.+)$;
+              fastcgi_pass unix:${config.services.phpfpm.pools.invoice-ninja.socket};
+              fastcgi_index index.php;
+            '';
             "/" = {
               tryFiles = "$uri $uri/ /index.php?$query_string";
               extraConfig = ''
@@ -318,11 +326,7 @@ in
                 }
               '';
             };
-            "~ \\.php$".extraConfig = ''
-              fastcgi_split_path_info ^(.+\.php)(/.+)$;
-              fastcgi_pass unix:${config.services.phpfpm.pools.invoice-ninja.socket};
-              fastcgi_index index.php;
-            '';
+            "~ \\.php$".extraConfig = "return 403;";
             "~ /\\.ht".extraConfig = "deny all;";
           };
           extraConfig = ''
@@ -435,17 +439,15 @@ in
                 # Perform the first migration
                 [[ ! -f ${cfg.dataDir}/.initial-migration ]] && invoice-ninja-manage migrate --force && touch ${cfg.dataDir}/.initial-migration
 
+                # Seed database with records
+                # Necessary for languages, currencies, countries, etc.
+                invoice-ninja-manage db:seed --force
+
                 # Create Invoice Ninja admin account
                 [[ ! -f ${cfg.dataDir}/.admin-created ]] \
                   && invoice-ninja-manage ninja:create-account --email=${cfg.adminEmail} --password=${cfg.adminPassword} \
                   && touch ${cfg.dataDir}/.admin-created
                 
-                # Recent releases make the React interface default
-                # Currently this is broken so we switch back to the Flutter interface
-                [[ ! -f ${cfg.dataDir}/.react-disabled ]] \
-                  && mysql -D ${cfg.database.name} -e 'UPDATE accounts SET set_react_as_default_ap = 0;' \
-                  && touch ${cfg.dataDir}/.react-disabled
-
                 invoice-ninja-manage route:cache
                 invoice-ninja-manage view:cache
                 invoice-ninja-manage config:cache
@@ -460,15 +462,23 @@ in
       "${cfg.dataDir}/storage/framework"
       "${cfg.dataDir}/storage/framework/cache"
       "${cfg.dataDir}/storage/framework/sessions"
+      "${cfg.dataDir}/storage/framework/testing"
       "${cfg.dataDir}/storage/framework/views"
       "${cfg.dataDir}/storage/logs"
+    ] (n: {
+      d = {
+        user = user;
+        group = group;
+        mode = "0770";
+      };
+    }) // lib.attrsets.genAttrs [
       cfg.runtimeDir
       "${cfg.runtimeDir}/cache"
     ] (n: {
       d = {
         user = user;
         group = group;
-        mode = "0770";
+        mode = "0750";
       };
     });
   };

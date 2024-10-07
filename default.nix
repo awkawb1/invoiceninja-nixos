@@ -9,19 +9,25 @@
 
 php.buildComposerProject (finalAttrs: {
   pname = "invoice-ninja";
-  version = "5.10.29";
+  version = "5.10.31";
 
   src = fetchFromGitHub {
     owner = "invoiceninja";
     repo = "invoiceninja";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-nhLt3DXW0q07ZhDq23mHwbVmqHZor+p925/yrKXum54=";
+    hash = "sha256-n3SpyXGUjw+qHEtnrclzIIdQ09UZBI+Rj7MXeUJVk6c=";
   };
 
-  vendorHash = "sha256-NVvx1aKhbC5XuXt2+gS2c3ulNWoCKrYNnEleBuAcftQ=";
+  vendorHash = "sha256-krGeVT6GyvkFkgeviA06dRneApEHDK61Tm+hXYTVYCM=";
 
-  # Patch sources to allow more restrictive permissions
-  # patches = [ ./config-filesystems.patch ];
+  # Patch sources for more restrictive permissions
+  patches = [
+    ./fix-storage-permissions.patch
+    ./disable-react-for-admin.patch
+
+    # FIXME this patch should fix "Health Check" file permissions errors
+    #./fix-base-permissions.patch
+  ];
 
   # Upstream composer.json has invalid license, webpatser/laravel-countries package is pointing
   # to commit-ref, and php required in require and require-dev

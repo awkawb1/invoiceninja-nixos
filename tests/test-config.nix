@@ -13,7 +13,7 @@
   users.users.test = {
     isNormalUser = true;
     extraGroups = [ "wheel" ];
-    initialPassword = "testing";
+    initialPassword = "test";
   };
 
   services.invoice-ninja = {
