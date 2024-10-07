@@ -106,10 +106,6 @@ in
     phpfpm.settings = lib.mkOption {
       type = with lib.types; attrsOf (oneOf [ int str bool ]);
       default = {
-        "listen.owner" = user;
-        "listen.group" = group;
-        "listen.mode" = "0660";
-
         "pm" = "dynamic";
         "pm.start_servers" = "2";
         "pm.min_spare_servers" = "2";
@@ -121,8 +117,6 @@ in
 
         "php_admin_value[error_log]" = "stderr";
         "php_admin_flag[log_errors]" = true;
-
-        "catch_workers_output" = true;
       };
 
       description = ''
@@ -288,7 +282,13 @@ in
 
     services.phpfpm.pools.invoice-ninja = {
       inherit user group phpPackage;
-      inherit (cfg.phpfpm) settings;
+
+      settings = {
+        "listen.owner" = user;
+        "listen.group" = group;
+        "listen.mode" = "0660";
+        "catch_workers_output" = true;
+      } // cfg.phpfpm.settings;
 
       phpOptions = ''
         post_max_size = ${cfg.maxUploadSize}
@@ -416,41 +416,41 @@ in
       };
 
       script = ''
-                # Before running any PHP program, cleanup the code cache.
-                # It's necessary if you upgrade the application otherwise you might
-                # try to import non-existent modules.
-                rm -f ${cfg.runtimeDir}/app.php
-                rm -rf ${cfg.runtimeDir}/cache/*
+        # Before running any PHP program, cleanup the code cache.
+        # It's necessary if you upgrade the application otherwise you might
+        # try to import non-existent modules.
+        rm -f ${cfg.runtimeDir}/app.php
+        rm -rf ${cfg.runtimeDir}/cache/*
 
-                # Concatenate non-secret .env and secret .env
-                rm -f ${cfg.dataDir}/.env
-                cp --no-preserve=all ${configFile} ${cfg.dataDir}/.env
-                echo -e '\n' >> ${cfg.dataDir}/.env
-                cat "$CREDENTIALS_DIRECTORY/env-secrets" >> ${cfg.dataDir}/.env
+        # Concatenate non-secret .env and secret .env
+        rm -f ${cfg.dataDir}/.env
+        cp --no-preserve=all ${configFile} ${cfg.dataDir}/.env
+        echo -e '\n' >> ${cfg.dataDir}/.env
+        cat "$CREDENTIALS_DIRECTORY/env-secrets" >> ${cfg.dataDir}/.env
 
-                # Link the static storage (package provided) to the runtime storage
-                # Necessary for cities.json and static images.
-                rsync -av --no-perms ${invoice-ninja}/storage-static/ ${cfg.dataDir}/storage
-                
-                # Link the app.php in the runtime folder.
-                # We cannot link the cache folder only because bootstrap folder needs to be writeable.
-                ln -sf ${invoice-ninja}/bootstrap-static/app.php ${cfg.runtimeDir}/app.php
+        # Link the static storage (package provided) to the runtime storage
+        # Necessary for cities.json and static images.
+        rsync -av --no-perms ${invoice-ninja}/storage-static/ ${cfg.dataDir}/storage
+        
+        # Link the app.php in the runtime folder.
+        # We cannot link the cache folder only because bootstrap folder needs to be writeable.
+        ln -sf ${invoice-ninja}/bootstrap-static/app.php ${cfg.runtimeDir}/app.php
 
-                # Perform the first migration
-                [[ ! -f ${cfg.dataDir}/.initial-migration ]] && invoice-ninja-manage migrate --force && touch ${cfg.dataDir}/.initial-migration
+        # Perform the first migration
+        [[ ! -f ${cfg.dataDir}/.initial-migration ]] && invoice-ninja-manage migrate --force && touch ${cfg.dataDir}/.initial-migration
 
-                # Seed database with records
-                # Necessary for languages, currencies, countries, etc.
-                invoice-ninja-manage db:seed --force
+        # Seed database with records
+        # Necessary for languages, currencies, countries, etc.
+        invoice-ninja-manage db:seed --force
 
-                # Create Invoice Ninja admin account
-                [[ ! -f ${cfg.dataDir}/.admin-created ]] \
-                  && invoice-ninja-manage ninja:create-account --email=${cfg.adminEmail} --password=${cfg.adminPassword} \
-                  && touch ${cfg.dataDir}/.admin-created
-                
-                invoice-ninja-manage route:cache
-                invoice-ninja-manage view:cache
-                invoice-ninja-manage config:cache
+        # Create Invoice Ninja admin account
+        [[ ! -f ${cfg.dataDir}/.admin-created ]] \
+          && invoice-ninja-manage ninja:create-account --email=${cfg.adminEmail} --password=${cfg.adminPassword} \
+          && touch ${cfg.dataDir}/.admin-created
+        
+        invoice-ninja-manage route:cache
+        invoice-ninja-manage view:cache
+        invoice-ninja-manage config:cache
       '';
     };
 
