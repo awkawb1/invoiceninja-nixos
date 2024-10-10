@@ -9,8 +9,7 @@ let
   cfg = config.services.invoice-ninja;
   user = cfg.user;
   group = cfg.group;
-  testing = pkgs.callPackage ./default.nix { inherit lib; php = pkgs.php; fetchFromGitHub = pkgs.fetchFromGitHub; };
-  invoice-ninja = testing.override { inherit (cfg) dataDir runtimeDir; };
+  invoice-ninja = pkgs.callPackage ./default.nix { inherit (cfg) dataDir runtimeDir; };
   configFile = pkgs.writeText "invoice-ninja-env" (lib.generators.toKeyValue { } cfg.settings);
 
   # PHP environment
@@ -89,10 +88,10 @@ in
       '';
     };
 
-    schedulerInterval = lib.mkOption {
+    queueWorkerInterval = lib.mkOption {
       type = lib.types.str;
-      default = "1d";
-      description = "How often the Invoice Ninja cron task should run.";
+      default = "5m";
+      description = "How often the Invoice Ninja worker task should run.";
     };
 
     hostName = lib.mkOption {
@@ -198,9 +197,7 @@ in
         enable = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = ''
-            Whether to enable Nginx server to serve Invoice Ninja.
-          '';
+          description = "Whether to enable Nginx server to serve Invoice Ninja.";
         };
 
         config = lib.mkOption {
@@ -221,8 +218,12 @@ in
     # FIXME Caddy and Nginx should be mutually exclusive
     assertions = [
       {
-        assertion = (cfg.webserver.nginx.enable || cfg.webserver.caddy.enable);
-        message = "Either the Caddy or Nginx webserver needs to be enabled.";
+        assertion = ((cfg.webserver.nginx.enable -> !cfg.webserver.caddy.enable)
+          && (cfg.webserver.caddy.enable -> !cfg.webserver.nginx.enable));
+        message = ''
+          Both Nginx and Caddy webservers cannot be enable together. Check your configuration
+          and ensure you only enabled one.
+        '';
       }
     ];
 
@@ -258,7 +259,7 @@ in
           DB_CONNECTION = lib.mkDefault "mysql";
           MULTI_DB_ENABLED = lib.mkDefault false;
           DEMO_MODE = lib.mkDefault false;
-          BROADCAST_DRIVER = lib.mkDefault "log";
+          BROADCAST_DRIVER = lib.mkDefault "pusher";
           LOG_CHANNEL = lib.mkDefault "stack";
           CACHE_DRIVER = lib.mkDefault "file";
           QUEUE_CONNECTION = lib.mkDefault "database";
@@ -267,6 +268,7 @@ in
           REQUIRE_HTTPS = lib.mkDefault (if (cfg.hostName != "localhost") then true else false);
           TRUSTED_PROXIES = lib.mkDefault "127.0.0.1";
           NINJA_ENVIRONMENT = lib.mkDefault "selfhost";
+          LOCAL_DOWNLOAD= lib.mkDefault false;
           PDF_GENERATOR = lib.mkDefault "snappdf";
           SNAPPDF_CHROMIUM_PATH = lib.mkDefault "${chromium}/bin/chromium";
           PRECONFIGURED_INSTALL = lib.mkDefault true;
@@ -298,7 +300,7 @@ in
     };
 
     users.users."${config.services.nginx.user}" = lib.mkIf (cfg.webserver.nginx.enable == true) { extraGroups = [ cfg.group ]; };
-    services.nginx = lib.mkIf ((cfg.webserver.nginx.enable == true) && (cfg.webserver.caddy.enable == false)) {
+    services.nginx = lib.mkIf (cfg.webserver.nginx.enable == true) {
       inherit (cfg.webserver.nginx) enable;
 
       recommendedTlsSettings = true;
@@ -338,7 +340,7 @@ in
     };
 
     users.users."${config.services.caddy.user}" = lib.mkIf (cfg.webserver.caddy.enable == true) { extraGroups = [ cfg.group ]; };
-    services.caddy = lib.mkIf ((cfg.webserver.caddy.enable == true) && (cfg.webserver.nginx.enable == false)) {
+    services.caddy = lib.mkIf (cfg.webserver.caddy.enable == true) {
       inherit (cfg.webserver.caddy) enable;
 
       globalConfig = lib.mkIf (cfg.hostName == "localhost") ''
@@ -374,7 +376,7 @@ in
     # Ensure chromium is available
     systemd.services.phpfpm-invoice-ninja.path = extraPrograms;
 
-    systemd.timers.invoice-ninja-cron = {
+    systemd.timers.invoice-ninja-worker = {
       description = "Invoice Ninja periodic tasks timer";
       after = [ "invoice-ninja-data-setup.service" ];
       requires = [ "phpfpm-invoice-ninja.service" ];
@@ -386,11 +388,11 @@ in
       };
     };
 
-    systemd.services.invoice-ninja-cron = {
+    systemd.services.invoice-ninja-worker = {
       description = "Invoice Ninja periodic tasks";
 
       serviceConfig = {
-        ExecStart = "${invoice-ninja-manage}/bin/invoice-ninja-manage schedule:run";
+        ExecStart = "${invoice-ninja-manage}/bin/invoice-ninja-manage queue:work --stop-when-empty";
         User = user;
         Group = group;
         StateDirectory = lib.mkIf (cfg.dataDir == "/var/lib/invoice-ninja") "invoice-ninja";
@@ -441,7 +443,7 @@ in
 
         # Seed database with records
         # Necessary for languages, currencies, countries, etc.
-        invoice-ninja-manage db:seed --force
+        [[ ! -f ${cfg.dataDir}/.db-seeded ]] && invoice-ninja-manage db:seed --force && touch ${cfg.dataDir}/.db-seeded
 
         # Create Invoice Ninja admin account
         [[ ! -f ${cfg.dataDir}/.admin-created ]] \
