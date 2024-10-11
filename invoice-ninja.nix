@@ -88,12 +88,6 @@ in
       '';
     };
 
-    queueWorkerInterval = lib.mkOption {
-      type = lib.types.str;
-      default = "5m";
-      description = "How often the Invoice Ninja worker task should run.";
-    };
-
     hostName = lib.mkOption {
       type = lib.types.str;
       default = "localhost";
@@ -376,23 +370,16 @@ in
     # Ensure chromium is available
     systemd.services.phpfpm-invoice-ninja.path = extraPrograms;
 
-    systemd.timers.invoice-ninja-worker = {
-      description = "Invoice Ninja periodic tasks timer";
-      after = [ "invoice-ninja-data-setup.service" ];
-      requires = [ "phpfpm-invoice-ninja.service" ];
-      wantedBy = [ "timers.target" ];
-
-      timerConfig = {
-        OnBootSec = cfg.schedulerInterval;
-        OnUnitActiveSec = cfg.schedulerInterval;
-      };
-    };
-
     systemd.services.invoice-ninja-worker = {
       description = "Invoice Ninja periodic tasks";
+      after = [ "invoice-ninja-data-setup.service" ];
+      requires = [ "phpfpm-invoice-ninja.service" ];
+      wantedBy = [ "multi-user.target" ];
+      reloadTriggers = [ invoice-ninja ];
+      reload = "${invoice-ninja-manage}/bin/invoice-ninja-manage queue:restart";
 
       serviceConfig = {
-        ExecStart = "${invoice-ninja-manage}/bin/invoice-ninja-manage queue:work --stop-when-empty";
+        ExecStart = "${invoice-ninja-manage}/bin/invoice-ninja-manage queue:work";
         User = user;
         Group = group;
         StateDirectory = lib.mkIf (cfg.dataDir == "/var/lib/invoice-ninja") "invoice-ninja";
