@@ -33,6 +33,18 @@ let
     fi
     $sudo ${phpPackage}/bin/php artisan "$@"
   '';
+
+  invoice-ninja-msmtp = pkgs.writeShellScriptBin "msmtp" ''
+    sudo=exec
+    if [[ "$USER" != ${user} ]]; then
+      sudo='exec /run/wrappers/bin/sudo -u ${user}'
+    fi
+    $sudo ${pkgs.msmtp}/bin/msmtp --auth on \
+      --tls=${if cfg.msmtp.tls then "on" else "off"} --tls-starttls=off \
+      --host=${cfg.msmtp.host} --port=${toString cfg.msmtp.port} \
+      --user=${cfg.msmtp.username} --passwordeval="${cfg.msmtp.passwordeval}" \
+      --from=${cfg.msmtp.from} "$1"
+  '';
 in
 {
   options.services.invoice-ninja = {
@@ -68,6 +80,13 @@ in
         ensuring the group exists before the Invoice Ninja application starts.
         :::
       '';
+    };
+
+    mailMailer = lib.mkOption {
+      type = lib.types.enum [ "sendmail" "smtp" ];
+      default = "sendmail";
+      example = "smtp";
+      description = "Controls the method used by Invoice Ninja to send mail.";
     };
 
     dataDir = lib.mkOption {
@@ -165,6 +184,43 @@ in
       description = "Maximum allowed upload size to Invoice Ninja.";
     };
 
+    msmtp = {
+      tls = lib.mkOption {
+        type = lib.types.bool;
+        default = true; 
+        description = "Enable SSL/TLS encryption";
+      };
+      from = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Email address message will come from.";
+      };
+      host = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "SMTP host used to send mail.";
+      };
+      port = lib.mkOption {
+        type = lib.types.int;
+        default = 25;
+        description = "Port used to connect to SMTP host.";
+      };
+      username = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Username used to authenticate to SMTP host";
+      };
+      passwordeval = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "cat /secrets/msmtp_password";
+        description = ''
+          A shell command to read the password from a secret file to avoid having it written in
+          the world-readable nix store. The password file must end with a newline (`\n`).
+        '';
+      };
+    };
+
     webserver = {
       caddy = {
         enable = lib.mkOption {
@@ -250,6 +306,8 @@ in
           APP_DEBUG = lib.mkDefault false;
           APP_URL = lib.mkDefault (url { hostName = cfg.hostName; });
           REACT_URL = lib.mkDefault (url { hostName = cfg.hostName; react = true; });
+          MAIL_MAILER = lib.mkDefault cfg.mailMailer;
+          MAIL_SENDMAIL_PATH = lib.mkDefault (if (cfg.mailMailer == "sendmail") then "${invoice-ninja-msmtp}/bin/msmtp" else "");
           DB_CONNECTION = lib.mkDefault "mysql";
           MULTI_DB_ENABLED = lib.mkDefault false;
           DEMO_MODE = lib.mkDefault false;
