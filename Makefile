@@ -11,8 +11,7 @@
 
 # Since all targets are phony, all targets should be listed here
 # One target per line
-.PHONY: boot-graphical-vm \
-	boot-vm \
+.PHONY: boot-vm \
 	build-vm \
 	clean \
 	format-nix-files \
@@ -29,8 +28,8 @@ format-nix-files: ## Format nix files using the nixpkgs-fmt tool
 	find . -name "*.nix" -exec nixpkgs-fmt {} \;
 
 clean: ## Clean build artifacts and shutdown running virtual machines
-	rm result
-	rm nixos.qcow2
+	rm result > /dev/null 2>&1
+	rm nixos.qcow2 > /dev/null 2>&1
 	pkill qemu
 	exit 0
 
@@ -45,7 +44,4 @@ boot-vm: ## Run virtual machine in current terminal
 	./result/bin/run-nixos-vm \
 		-nographic; \
 	reset
-
-boot-graphical-vm: ## Run virtual machine in QEMU window
-	./result/bin/run-nixos-vm
 

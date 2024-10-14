@@ -1,17 +1,21 @@
-{ config, lib, pkgs, ... }:
+{ config
+, lib
+, pkgs
+, modulesPath
+, ... }:
+
 
 let
   cfg = config.services.invoice-ninja;
   user = cfg.user;
   group = cfg.group;
-  testing = pkgs.callPackage ./default.nix { inherit lib; php = pkgs.php; fetchFromGitHub = pkgs.fetchFromGitHub; };
-  invoice-ninja = testing.override { inherit (cfg) dataDir runtimeDir; };
+  invoice-ninja = pkgs.callPackage ./default.nix { inherit (cfg) dataDir runtimeDir; };
   configFile = pkgs.writeText "invoice-ninja-env" (lib.generators.toKeyValue { } cfg.settings);
 
   # PHP environment
   phpPackage = cfg.phpPackage.buildEnv {
     extensions = { enabled, all }: enabled ++ (with all;
-      [ bcmath ctype curl fileinfo gd gmp iconv mbstring mysqli openssl pdo tokenizer zip ]
+      [ bcmath ctype curl fileinfo gd gmp iconv imagick intl mbstring mysqli openssl pdo soap tokenizer zip ]
     );
 
     extraConfig = "memory_limit = 1024M";
@@ -66,6 +70,20 @@ in
       '';
     };
 
+    mail = {
+      mailer = lib.mkOption {
+        type = lib.types.enum [ "sendmail" ];
+        default = "sendmail";
+        description = "Controls the method used by Invoice Ninja to send mail.";
+      };
+      mailFromName = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "Someone";
+        description = "Set the 'To' email header name attribute.";
+      };
+    };
+
     dataDir = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/invoice-ninja";
@@ -84,13 +102,7 @@ in
       '';
     };
 
-    schedulerInterval = lib.mkOption {
-      type = lib.types.str;
-      default = "1d";
-      description = "How often the Invoice Ninja cron task should run.";
-    };
-
-    domain = lib.mkOption {
+    hostName = lib.mkOption {
       type = lib.types.str;
       default = "localhost";
       description = ''
@@ -101,10 +113,6 @@ in
     phpfpm.settings = lib.mkOption {
       type = with lib.types; attrsOf (oneOf [ int str bool ]);
       default = {
-        "listen.owner" = user;
-        "listen.group" = group;
-        "listen.mode" = "0660";
-
         "pm" = "dynamic";
         "pm.start_servers" = "2";
         "pm.min_spare_servers" = "2";
@@ -116,8 +124,6 @@ in
 
         "php_admin_value[error_log]" = "stderr";
         "php_admin_flag[log_errors]" = true;
-
-        "catch_workers_output" = true;
       };
 
       description = ''
@@ -141,11 +147,23 @@ in
       '';
     };
 
+    adminEmail = lib.mkOption {
+      type = lib.types.str;
+      default = "example@email.com";
+      description = "Email address of the first (admin) account for this Invoice Ninja installation";
+    };
+
+    adminPassword = lib.mkOption {
+      type = lib.types.str;
+      default = "example";
+      description = "Password of the first (admin) account for this Invoice Ninja installation";
+    };
+
     database = {
       createLocally = lib.mkOption {
         type = lib.types.bool;
         default = true;
-        description = "a local database using UNIX socket authentication";
+        description = "A local database using UNIX socket authentication";
       };
 
       name = lib.mkOption {
@@ -155,36 +173,91 @@ in
       };
     };
 
-    enableACME = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = ''
-        				Whether an ACME certificate should be used to secure connections to the server.
-        			'';
+    maxUploadSize = lib.mkOption {
+      type = lib.types.str;
+      default = "8M";
+      description = "Maximum allowed upload size to Invoice Ninja.";
     };
 
-    nginx = lib.mkOption {
-      type = lib.types.nullOr (lib.types.submodule
-        (import <nixpkgs/nixos/modules/services/web-servers/nginx/vhost-options.nix> {
-          inherit config lib;
-        }));
-      default = null;
-      example = ''
-        {
-          enableACME = true;
-          forceHttps = true;
-        }
-      '';
+    msmtp.accounts.invoice-ninja = lib.mkOption {
+      type = lib.types.attrs;
+      default = {};
+      example = {
+        from = "someone@example.com";
+        host = "smtp.example";
+        port = 25;
+        auth = true;
+        tls = true;
+        tls_starttls = true;
+        user = "someone";
+        passwordeval = "cat /secrets/password.txt";
+      };
       description = ''
-        With this option, you can customize an nginx virtual host which already has sensible defaults
-        for Invoice Ninja. Set to {} if you do not need any customization to the virtual host.
-        If enabled, then by default, the {option}`serverName` is `''${domain}`. If this is set to
-        null (the default), no nginx virtualHost will be configured.
+        Here we define the msmtp configuration for an invoice-ninja account which
+        will be used by Invoice Ninja to send email message.
+
+        It is advised to use the `passwordeval` setting to read the password
+        from a secret file to avoid having it written in the world-readable
+        nix store. The password file must end with a newline (`\n`).
       '';
+    };
+
+    webserver = {
+      caddy = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Whether to enable the Caddy server to serve Invoice Ninja.";
+        };
+
+        config = lib.mkOption {
+          type = lib.types.submodule (
+            (import (modulesPath + "/services/web-servers/caddy/vhost-options.nix") { cfg = config.services.caddy; }) {
+              inherit lib; config = cfg; name = (if (cfg.hostName == "localhost") then ":80" else cfg.hostName);
+            }
+          );
+          default = { };
+          description = ''
+            Extra configuration for the Caddy virtual host of Invoice Ninja.
+                Set to `{ }` to use the default configuration
+          '';
+        };
+      };
+
+      nginx = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Whether to enable Nginx server to serve Invoice Ninja.";
+        };
+
+        config = lib.mkOption {
+          type = lib.types.submodule (
+            (import (modulesPath + "/services/web-servers/nginx/vhost-options.nix") { inherit config lib; })
+          );
+          default = { };
+          description = ''
+            Extra configuration for the Nginx virtual host of Invoice Ninja.
+                Set to `{ }` to use the default configuration
+          '';
+        };
+      };
     };
   };
 
   config = lib.mkIf cfg.enable {
+    # FIXME Caddy and Nginx should be mutually exclusive
+    assertions = [
+      {
+        assertion = ((cfg.webserver.nginx.enable -> !cfg.webserver.caddy.enable)
+          && (cfg.webserver.caddy.enable -> !cfg.webserver.nginx.enable));
+        message = ''
+          Both Nginx and Caddy webservers cannot be enable together. Check your configuration
+          and ensure you only enabled one.
+        '';
+      }
+    ];
+
     users.users.invoiceninja = lib.mkIf (cfg.user == "invoiceninja") {
       isSystemUser = true;
       home = cfg.dataDir;
@@ -196,35 +269,57 @@ in
 
     environment.systemPackages = [ invoice-ninja-manage ] ++ extraPrograms;
 
+    programs.msmtp = {
+      inherit (cfg.msmtp) accounts;
+      enable = true;
+    };
+
     services.invoice-ninja.settings =
       let
-        app_http_url = "http://${cfg.domain}";
-        app_https_url = "https://${cfg.domain}";
-        react_http_url = "http://${cfg.domain}:3001";
-        react_https_url = "https://${cfg.domain}:3001";
+        url = ({ hostName, react ? false }: 
+          if (hostName == "localhost")
+            then
+              (if (react == true) then ("http://" + hostName + ":3001") else ("http://" + hostName))
+            else
+              (if (react == true) then ("https://" + hostName + ":3001") else ("https://" + hostName))
+          );
         chromium = lib.lists.findSingle (x: x == pkgs.chromium) "none" "multiple" extraPrograms;
       in
       lib.mkMerge [
-        ({
+        (rec {
           APP_NAME = lib.mkDefault "\"Invoice Ninja\"";
           APP_ENV = lib.mkDefault "production";
           APP_DEBUG = lib.mkDefault false;
-          APP_URL = lib.mkDefault (if (cfg.domain != "localhost") then "${app_https_url}" else "${app_http_url}");
-          REACT_URL = lib.mkDefault (if (cfg.domain != "localhost") then "${react_https_url}" else "${react_http_url}");
+          EXPANDED_LOGGING = lib.mkDefault true;
+          APP_URL = lib.mkDefault (url { hostName = cfg.hostName; });
+          REACT_URL = lib.mkDefault (url { hostName = cfg.hostName; react = true; });
+          MAIL_MAILER = lib.mkDefault cfg.mail.mailer;
+          MAIL_SENDMAIL_PATH = lib.mkDefault (
+            if (cfg.mail.mailer == "sendmail")
+            then
+              ''"/run/wrappers/bin/sendmail -t -a invoice-ninja"''
+            else
+              ""
+          );
+          MAIL_FROM_ADDRESS = lib.mkDefault "${cfg.msmtp.accounts.invoice-ninja.from}";
+          MAIL_FROM_NAME = lib.mkDefault ''"${cfg.mail.mailFromName}"'';
+          ERROR_EMAIL = lib.mkDefault "${cfg.msmtp.accounts.invoice-ninja.from}";
           DB_CONNECTION = lib.mkDefault "mysql";
           MULTI_DB_ENABLED = lib.mkDefault false;
           DEMO_MODE = lib.mkDefault false;
-          BROADCAST_DRIVER = lib.mkDefault "log";
+          BROADCAST_DRIVER = lib.mkDefault "pusher";
           LOG_CHANNEL = lib.mkDefault "stack";
           CACHE_DRIVER = lib.mkDefault "file";
           QUEUE_CONNECTION = lib.mkDefault "database";
           SESSION_DRIVER = lib.mkDefault "file";
           SESSION_LIFETIME = lib.mkDefault "120";
-          REQUIRE_HTTPS = lib.mkDefault (if (cfg.domain != "localhost") then true else false);
+          REQUIRE_HTTPS = lib.mkDefault (if (cfg.hostName != "localhost") then true else false);
           TRUSTED_PROXIES = lib.mkDefault "127.0.0.1";
           NINJA_ENVIRONMENT = lib.mkDefault "selfhost";
+          LOCAL_DOWNLOAD= lib.mkDefault false;
           PDF_GENERATOR = lib.mkDefault "snappdf";
           SNAPPDF_CHROMIUM_PATH = lib.mkDefault "${chromium}/bin/chromium";
+          PRECONFIGURED_INSTALL = lib.mkDefault true;
         })
         (lib.mkIf (cfg.database.createLocally) {
           DB_CONNECTION = lib.mkDefault "mysql";
@@ -235,76 +330,80 @@ in
         })
       ];
 
-    services.phpfpm.pools.invoiceninja = {
+    services.phpfpm.pools.invoice-ninja = {
       inherit user group phpPackage;
-      inherit (cfg.phpfpm) settings;
+
+      settings = {
+        "listen.owner" = user;
+        "listen.group" = group;
+        "listen.mode" = "0660";
+        "catch_workers_output" = true;
+      } // cfg.phpfpm.settings;
+
+      phpOptions = ''
+        post_max_size = ${cfg.maxUploadSize}
+        upload_max_filesize = ${cfg.maxUploadSize}
+        max_execution_time = 600;
+      '';
     };
 
-    users.users."${config.services.nginx.user}" = lib.mkIf (cfg.nginx != null) { extraGroups = [ cfg.group ]; };
-    services.nginx = lib.mkIf (cfg.nginx != null) {
-      enable = true;
+    users.users."${config.services.nginx.user}" = lib.mkIf (cfg.webserver.nginx.enable == true) { extraGroups = [ cfg.group ]; };
+    services.nginx = lib.mkIf (cfg.webserver.nginx.enable == true) {
+      inherit (cfg.webserver.nginx) enable;
 
-      clientMaxBodySize = "20m";
-
-      recommendedGzipSettings = true;
-      recommendedOptimisation = true;
-      recommendedProxySettings = true;
       recommendedTlsSettings = true;
+      recommendedGzipSettings = true;
+      recommendedProxySettings = true;
+      recommendedOptimisation = true;
 
-      appendHttpConfig = ''
-        				# Add HSTS header with preloading to HTTPS requests.
-        				# Adding this header to HTTP requests is discouraged
-        				map $scheme $hsts_header {
-        						https   "max-age=31536000; includeSubdomains; preload";
-        				}
-        				add_header Strict-Transport-Security $hsts_header;
+      clientMaxBodySize = cfg.maxUploadSize;
 
-        				# Minimize information leaked to other domains
-        				add_header 'Referrer-Policy' 'origin-when-cross-origin';
-
-        				# Disable embedding as a frame
-        				add_header X-Frame-Options DENY;
-
-        				# Prevent injection of code in other mime types (XSS Attacks)
-        				add_header X-Content-Type-Options nosniff;
-
-        				# This might create errors
-        				proxy_cookie_path / "/; secure; HttpOnly; SameSite=strict";
-        			'';
-
-      virtualHosts."${cfg.domain}" = lib.mkMerge [
-        cfg.nginx
+      virtualHosts."${cfg.hostName}" = lib.mkMerge [
+        cfg.webserver.nginx.config
         {
-          inherit (cfg) enableACME;
-          forceSSL = lib.mkDefault (if cfg.enableACME then true else false);
-          root = lib.mkForce "${invoice-ninja}/public/";
-          locations."= /index.php" = {
-            extraConfig = ''
-              							fastcgi_pass unix:${config.services.phpfpm.pools.invoiceninja.socket};
-              							fastcgi_index index.php;
-              						'';
-          };
-          locations."~ \\.php$" = {
-            return = 403;
-          };
-          locations."/" = {
-            tryFiles = "$uri $uri/ /index.php?$query_string";
-            extraConfig = ''
-              							# Add your rewrite rule for non-existent files
-              							if (!-e $request_filename) {
-              									rewrite ^(.+)$ /index.php?q=$1 last;
-              							}
-              						'';
-          };
-          locations."~ /\\.ht" = {
-            extraConfig = ''
-              							deny all;
-              						'';
+          root = lib.mkForce "${invoice-ninja}/public";
+          locations = {
+            "= /index.php".extraConfig = '' 
+              fastcgi_split_path_info ^(.+\.php)(/.+)$;
+              fastcgi_pass unix:${config.services.phpfpm.pools.invoice-ninja.socket};
+              fastcgi_index index.php;
+            '';
+            "/" = {
+              tryFiles = "$uri $uri/ /index.php?$query_string";
+              extraConfig = ''
+                if (!-e $request_filename) {
+                    rewrite ^(.+)$ /index.php?q=$1 last;
+                }
+              '';
+            };
+            "~ \\.php$".extraConfig = "return 403;";
+            "~ /\\.ht".extraConfig = "deny all;";
           };
           extraConfig = ''
-            						index index.php index.html index.htm;
-            						error_page 404 /index.php;
-            					'';
+            index index.html index.htm index.php;
+            error_page 404 /index.php;
+          '';
+        }
+      ];
+    };
+
+    users.users."${config.services.caddy.user}" = lib.mkIf (cfg.webserver.caddy.enable == true) { extraGroups = [ cfg.group ]; };
+    services.caddy = lib.mkIf (cfg.webserver.caddy.enable == true) {
+      inherit (cfg.webserver.caddy) enable;
+
+      globalConfig = lib.mkIf (cfg.hostName == "localhost") ''
+        auto_https disable_redirects
+      '';
+
+      virtualHosts."${cfg.hostName}" = lib.mkMerge [
+        cfg.webserver.caddy.config
+        {
+          extraConfig = ''
+            encode zstd gzip
+            root * ${invoice-ninja}/public
+            php_fastcgi unix/${config.services.phpfpm.pools.invoice-ninja.socket}
+            file_server
+          '';
         }
       ];
     };
@@ -325,23 +424,16 @@ in
     # Ensure chromium is available
     systemd.services.phpfpm-invoice-ninja.path = extraPrograms;
 
-    systemd.timers.invoice-ninja-cron = {
-      description = "Invoice Ninja periodic tasks timer";
+    systemd.services.invoice-ninja-worker = {
+      description = "Invoice Ninja periodic tasks";
       after = [ "invoice-ninja-data-setup.service" ];
       requires = [ "phpfpm-invoice-ninja.service" ];
-      wantedBy = [ "timers.target" ];
-
-      timerConfig = {
-        OnBootSec = cfg.schedulerInterval;
-        OnUnitActiveSec = cfg.schedulerInterval;
-      };
-    };
-
-    systemd.services.invoice-ninja-cron = {
-      description = "Invoice Ninja periodic tasks";
+      wantedBy = [ "multi-user.target" ];
+      reloadTriggers = [ invoice-ninja ];
+      reload = "${invoice-ninja-manage}/bin/invoice-ninja-manage queue:restart";
 
       serviceConfig = {
-        ExecStart = "${invoice-ninja-manage}/bin/invoice-ninja-manage schedule:run";
+        ExecStart = "${invoice-ninja-manage}/bin/invoice-ninja-manage queue:work";
         User = user;
         Group = group;
         StateDirectory = lib.mkIf (cfg.dataDir == "/var/lib/invoice-ninja") "invoice-ninja";
@@ -354,7 +446,7 @@ in
       wantedBy = [ "multi-user.target" ];
       after = lib.optional cfg.database.createLocally "mysql.service";
       requires = lib.optional cfg.database.createLocally "mysql.service";
-      path = with pkgs; [ bash invoice-ninja-manage rsync ] ++ extraPrograms;
+      path = with pkgs; [ bash invoice-ninja-manage rsync config.services.mysql.package ] ++ extraPrograms;
 
       serviceConfig = {
         Type = "oneshot";
@@ -367,58 +459,71 @@ in
       };
 
       script = ''
-                # Before running any PHP program, cleanup the code cache.
-                # It's necessary if you upgrade the application otherwise you might
-                # try to import non-existent modules.
-                rm -f ${cfg.runtimeDir}/app.php
-                rm -rf ${cfg.runtimeDir}/cache/*
+        # Before running any PHP program, cleanup the code cache.
+        # It's necessary if you upgrade the application otherwise you might
+        # try to import non-existent modules.
+        rm -f ${cfg.runtimeDir}/app.php
+        rm -rf ${cfg.runtimeDir}/cache/*
 
-                # Concatenate non-secret .env and secret .env
-                rm -f ${cfg.dataDir}/.env
-                cp --no-preserve=all ${configFile} ${cfg.dataDir}/.env
-                # echo -e '\n' >> ${cfg.dataDir}/.env
-                cat "$CREDENTIALS_DIRECTORY/env-secrets" >> ${cfg.dataDir}/.env
+        # Concatenate non-secret .env and secret .env
+        rm -f ${cfg.dataDir}/.env
+        cp --no-preserve=all ${configFile} ${cfg.dataDir}/.env
+        echo -e '\n' >> ${cfg.dataDir}/.env
+        cat "$CREDENTIALS_DIRECTORY/env-secrets" >> ${cfg.dataDir}/.env
 
-                # Link the static storage (package provided) to the runtime storage
-                # Necessary for cities.json and static images.
-                mkdir -p ${cfg.dataDir}/storage
-                rsync -av --no-perms ${invoice-ninja}/storage-static/ ${cfg.dataDir}/storage
-                chmod -R +w ${cfg.dataDir}/storage
+        # Link the static storage (package provided) to the runtime storage
+        # Necessary for cities.json and static images.
+        rsync -av --no-perms ${invoice-ninja}/storage-static/ ${cfg.dataDir}/storage
+        
+        # Link the app.php in the runtime folder.
+        # We cannot link the cache folder only because bootstrap folder needs to be writeable.
+        ln -sf ${invoice-ninja}/bootstrap-static/app.php ${cfg.runtimeDir}/app.php
 
-                chmod g+x ${cfg.dataDir}/storage ${cfg.dataDir}/storage/app
-                chmod -R g+rX ${cfg.dataDir}/storage/app/public
+        # Perform the first migration
+        [[ ! -f ${cfg.dataDir}/.initial-migration ]] && invoice-ninja-manage migrate --force && touch ${cfg.dataDir}/.initial-migration
 
-                # Link the app.php in the runtime folder.
-                # We cannot link the cache folder only because bootstrap folder needs to be writeable.
-                ln -sf ${invoice-ninja}/bootstrap-static/app.php ${cfg.runtimeDir}/app.php
+        # Seed database with records
+        # Necessary for languages, currencies, countries, etc.
+        [[ ! -f ${cfg.dataDir}/.db-seeded ]] && invoice-ninja-manage db:seed --force && touch ${cfg.dataDir}/.db-seeded
 
-        				# Link the static public/images (package provided) to the runtime public/public/images
-        				mkdir -p ${cfg.dataDir}/public/images
-        				rsync -av --no-perms ${invoice-ninja}/public/images-static/ ${cfg.dataDir}/public/images
-        				
-        				# Link the static public/react (package provided) to the runtime public/public/react
-        				mkdir -p ${cfg.dataDir}/public/react
-        				rsync -av --no-perms ${invoice-ninja}/public/react-static/ ${cfg.dataDir}/public/react
-
-        				chmod -R +w ${cfg.dataDir}/public
-        				chmod -R g+rwX ${cfg.dataDir}/public
-        				
-        				# Link the static vite.config.ts (package provided to the runtime vite.config.ts
-        				rsync -av --no-perms ${invoice-ninja}/vite.config.ts.static ${cfg.dataDir}/vite.config.ts
-        				chmod +w ${cfg.dataDir}/vite.config.ts
-        				chmod g+rw ${cfg.dataDir}/vite.config.ts
-
-                invoice-ninja-manage route:cache
-                invoice-ninja-manage view:cache
-                invoice-ninja-manage config:cache
+        # Create Invoice Ninja admin account
+        [[ ! -f ${cfg.dataDir}/.admin-created ]] \
+          && invoice-ninja-manage ninja:create-account --email=${cfg.adminEmail} --password=${cfg.adminPassword} \
+          && touch ${cfg.dataDir}/.admin-created
+        
+        invoice-ninja-manage route:cache
+        invoice-ninja-manage view:cache
+        invoice-ninja-manage config:cache
       '';
     };
 
-    systemd.tmpfiles.rules = [
-      # Cache must live across multiple systemd units runtimes.
-      "d ${cfg.runtimeDir}/                         0700 ${user} ${group} - -"
-      "d ${cfg.runtimeDir}/cache                    0700 ${user} ${group} - -"
-    ];
+    systemd.tmpfiles.settings."10-invoice-ninja" = lib.attrsets.genAttrs [
+      cfg.dataDir
+      "${cfg.dataDir}/storage"
+      "${cfg.dataDir}/storage/app"
+      "${cfg.dataDir}/storage/app/public"
+      "${cfg.dataDir}/storage/framework"
+      "${cfg.dataDir}/storage/framework/cache"
+      "${cfg.dataDir}/storage/framework/sessions"
+      "${cfg.dataDir}/storage/framework/testing"
+      "${cfg.dataDir}/storage/framework/views"
+      "${cfg.dataDir}/storage/logs"
+    ] (n: {
+      d = {
+        user = user;
+        group = group;
+        mode = "0770";
+      };
+    }) // lib.attrsets.genAttrs [
+      cfg.runtimeDir
+      "${cfg.runtimeDir}/cache"
+    ] (n: {
+      d = {
+        user = user;
+        group = group;
+        mode = "0750";
+      };
+    });
   };
 }
 

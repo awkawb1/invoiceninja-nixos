@@ -1,0 +1,32 @@
+diff --git a/config/filesystems.php b/config/filesystems.php
+index a104af7a81..5294147710 100644
+--- a/config/filesystems.php
++++ b/config/filesystems.php
+@@ -53,11 +53,11 @@ return [
+             'root' => storage_path('app'),
+             'permissions' => [
+                 'file' => [
+-                    'public' => 0664,
++                    'public' => 0660,
+                     'private' => 0600,
+                 ],
+                 'dir' => [
+-                    'public' => 0775,
++                    'public' => 0770,
+                     'private' => 0700,
+                 ],
+             ],
+@@ -71,11 +71,11 @@ return [
+             'visibility' => 'public',
+             'permissions' => [
+                 'file' => [
+-                    'public' => 0664,
++                    'public' => 0660,
+                     'private' => 0600,
+                 ],
+                 'dir' => [
+-                    'public' => 0775,
++                    'public' => 0770,
+                     'private' => 0700,
+                 ],
+             ],
