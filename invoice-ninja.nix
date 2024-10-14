@@ -33,18 +33,6 @@ let
     fi
     $sudo ${phpPackage}/bin/php artisan "$@"
   '';
-
-  invoice-ninja-msmtp = pkgs.writeShellScriptBin "msmtp" ''
-    sudo=exec
-    if [[ "$USER" != ${user} ]]; then
-      sudo='exec /run/wrappers/bin/sudo -u ${user}'
-    fi
-    $sudo ${pkgs.msmtp}/bin/msmtp --auth on \
-      --tls=${if cfg.msmtp.tls then "on" else "off"} --tls-starttls=off \
-      --host=${cfg.msmtp.host} --port=${toString cfg.msmtp.port} \
-      --user=${cfg.msmtp.username} --passwordeval="${cfg.msmtp.passwordeval}" \
-      --from=${cfg.msmtp.from} "$1"
-  '';
 in
 {
   options.services.invoice-ninja = {
@@ -82,11 +70,18 @@ in
       '';
     };
 
-    mailMailer = lib.mkOption {
-      type = lib.types.enum [ "sendmail" "smtp" ];
-      default = "sendmail";
-      example = "smtp";
-      description = "Controls the method used by Invoice Ninja to send mail.";
+    mail = {
+      mailer = lib.mkOption {
+        type = lib.types.enum [ "sendmail" ];
+        default = "sendmail";
+        description = "Controls the method used by Invoice Ninja to send mail.";
+      };
+      mailFromName = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "Someone";
+        description = "Set the 'To' email header name attribute.";
+      };
     };
 
     dataDir = lib.mkOption {
@@ -184,41 +179,27 @@ in
       description = "Maximum allowed upload size to Invoice Ninja.";
     };
 
-    msmtp = {
-      tls = lib.mkOption {
-        type = lib.types.bool;
-        default = true; 
-        description = "Enable SSL/TLS encryption";
+    msmtp.accounts.invoice-ninja = lib.mkOption {
+      type = lib.types.attrs;
+      default = {};
+      example = {
+        from = "someone@example.com";
+        host = "smtp.example";
+        port = 25;
+        auth = true;
+        tls = true;
+        tls_starttls = true;
+        user = "someone";
+        passwordeval = "cat /secrets/password.txt";
       };
-      from = lib.mkOption {
-        type = lib.types.str;
-        default = "";
-        description = "Email address message will come from.";
-      };
-      host = lib.mkOption {
-        type = lib.types.str;
-        default = "";
-        description = "SMTP host used to send mail.";
-      };
-      port = lib.mkOption {
-        type = lib.types.int;
-        default = 25;
-        description = "Port used to connect to SMTP host.";
-      };
-      username = lib.mkOption {
-        type = lib.types.str;
-        default = "";
-        description = "Username used to authenticate to SMTP host";
-      };
-      passwordeval = lib.mkOption {
-        type = lib.types.str;
-        default = "";
-        example = "cat /secrets/msmtp_password";
-        description = ''
-          A shell command to read the password from a secret file to avoid having it written in
-          the world-readable nix store. The password file must end with a newline (`\n`).
-        '';
-      };
+      description = ''
+        Here we define the msmtp configuration for an invoice-ninja account which
+        will be used by Invoice Ninja to send email message.
+
+        It is advised to use the `passwordeval` setting to read the password
+        from a secret file to avoid having it written in the world-readable
+        nix store. The password file must end with a newline (`\n`).
+      '';
     };
 
     webserver = {
@@ -288,6 +269,11 @@ in
 
     environment.systemPackages = [ invoice-ninja-manage ] ++ extraPrograms;
 
+    programs.msmtp = {
+      inherit (cfg.msmtp) accounts;
+      enable = true;
+    };
+
     services.invoice-ninja.settings =
       let
         url = ({ hostName, react ? false }: 
@@ -300,14 +286,24 @@ in
         chromium = lib.lists.findSingle (x: x == pkgs.chromium) "none" "multiple" extraPrograms;
       in
       lib.mkMerge [
-        ({
+        (rec {
           APP_NAME = lib.mkDefault "\"Invoice Ninja\"";
           APP_ENV = lib.mkDefault "production";
           APP_DEBUG = lib.mkDefault false;
+          EXPANDED_LOGGING = lib.mkDefault true;
           APP_URL = lib.mkDefault (url { hostName = cfg.hostName; });
           REACT_URL = lib.mkDefault (url { hostName = cfg.hostName; react = true; });
-          MAIL_MAILER = lib.mkDefault cfg.mailMailer;
-          MAIL_SENDMAIL_PATH = lib.mkDefault (if (cfg.mailMailer == "sendmail") then "${invoice-ninja-msmtp}/bin/msmtp" else "");
+          MAIL_MAILER = lib.mkDefault cfg.mail.mailer;
+          MAIL_SENDMAIL_PATH = lib.mkDefault (
+            if (cfg.mail.mailer == "sendmail")
+            then
+              ''"/run/wrappers/bin/sendmail -t -a invoice-ninja"''
+            else
+              ""
+          );
+          MAIL_FROM_ADDRESS = lib.mkDefault "${cfg.msmtp.accounts.invoice-ninja.from}";
+          MAIL_FROM_NAME = lib.mkDefault ''"${cfg.mail.mailFromName}"'';
+          ERROR_EMAIL = lib.mkDefault "${cfg.msmtp.accounts.invoice-ninja.from}";
           DB_CONNECTION = lib.mkDefault "mysql";
           MULTI_DB_ENABLED = lib.mkDefault false;
           DEMO_MODE = lib.mkDefault false;
