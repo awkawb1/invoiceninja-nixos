@@ -32,12 +32,16 @@
     database.createLocally = true;
     webserver.caddy.enable = true;
     webserver.nginx.enable = false;
-    msmtp = {
+    mail.mailFromName = "Andrew Bryant";
+    adminEmail = "billing@allpawcare.com";
+    msmtp.accounts.invoice-ninja = {
+      auth = true;
       tls = true;
-      from = "awkawb@awkawb.cloud";
+      tls_starttls = false;
+      from = "billing@allpawcare.com";
       host = "smtp.fastmail.com";
       port = 465;
-      username = "awkawb@awkawb.cloud";
+      user = "awkawb@awkawb.cloud";
       passwordeval = "cat /etc/msmtp-password";
     };
     secretFile = ./test-secrets.env;
