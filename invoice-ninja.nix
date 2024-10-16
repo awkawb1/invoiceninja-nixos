@@ -147,29 +147,38 @@ in
       '';
     };
 
-    adminEmail = lib.mkOption {
-      type = lib.types.str;
-      default = "example@email.com";
-      description = "Email address of the first (admin) account for this Invoice Ninja installation";
-    };
-
-    adminPassword = lib.mkOption {
-      type = lib.types.str;
-      default = "example";
-      description = "Password of the first (admin) account for this Invoice Ninja installation";
+    adminAccount = {
+      createAdmin = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          When set to `true`, an admin account will be created for Invoice Ninja. If set to `false`
+          Invoice Ninja will run a setup wizard on first use.
+        '';
+      };
+      email = lib.mkOption {
+        type = lib.types.str;
+        default = "example@email.com";
+        description = "Email address of the first (admin) account for this Invoice Ninja installation";
+      };
+      password = lib.mkOption {
+        type = lib.types.str;
+        default = "example";
+        description = "Password of the first (admin) account for this Invoice Ninja installation";
+      };
     };
 
     database = {
       createLocally = lib.mkOption {
         type = lib.types.bool;
         default = true;
-        description = "A local database using UNIX socket authentication";
+        description = "Installs a local MariaDB server to use with Invoice Ninja.";
       };
 
       name = lib.mkOption {
         type = lib.types.str;
         default = "invoiceninja";
-        description = "Database name for Invoice Ninja.";
+        description = "Name of the database to use for Invoice Ninja.";
       };
     };
 
@@ -202,62 +211,42 @@ in
       '';
     };
 
-    webserver = {
-      caddy = {
-        enable = lib.mkOption {
-          type = lib.types.bool;
-          default = false;
-          description = "Whether to enable the Caddy server to serve Invoice Ninja.";
-        };
-
-        config = lib.mkOption {
-          type = lib.types.submodule (
-            (import (modulesPath + "/services/web-servers/caddy/vhost-options.nix") { cfg = config.services.caddy; }) {
-              inherit lib; config = cfg; name = (if (cfg.hostName == "localhost") then ":80" else cfg.hostName);
-            }
-          );
-          default = { };
-          description = ''
-            Extra configuration for the Caddy virtual host of Invoice Ninja.
-                Set to `{ }` to use the default configuration
-          '';
-        };
+    proxy = {
+      server = lib.mkOption {
+        type = lib.types.enum [ "caddy" "nginx" "none" ];
+        default = "nginx";
+        example = "caddy";
+        description = ''
+          Choose the proxy server to serve Invoice Ninja. Setting this to
+          `none` results in no proxy server being installed.
+        '';
       };
-
-      nginx = {
-        enable = lib.mkOption {
-          type = lib.types.bool;
-          default = true;
-          description = "Whether to enable Nginx server to serve Invoice Ninja.";
-        };
-
-        config = lib.mkOption {
-          type = lib.types.submodule (
-            (import (modulesPath + "/services/web-servers/nginx/vhost-options.nix") { inherit config lib; })
-          );
-          default = { };
-          description = ''
-            Extra configuration for the Nginx virtual host of Invoice Ninja.
-                Set to `{ }` to use the default configuration
-          '';
-        };
+      caddyConfig = lib.mkOption {
+        type = lib.types.submodule (
+          (import (modulesPath + "/services/web-servers/caddy/vhost-options.nix") { cfg = config.services.caddy; }) {
+            inherit lib; config = cfg; name = (if (cfg.hostName == "localhost") then ":80" else cfg.hostName);
+          }
+        );
+        default = { };
+        description = ''
+          Extra configuration for the Caddy virtual host of Invoice Ninja.
+              Set to `{ }` to use the default configuration
+        '';
+      };
+      nginxConfig = lib.mkOption {
+        type = lib.types.submodule (
+          (import (modulesPath + "/services/web-servers/nginx/vhost-options.nix") { inherit config lib; })
+        );
+        default = { };
+        description = ''
+          Extra configuration for the Nginx virtual host of Invoice Ninja.
+              Set to `{ }` to use the default configuration
+        '';
       };
     };
   };
 
   config = lib.mkIf cfg.enable {
-    # FIXME Caddy and Nginx should be mutually exclusive
-    assertions = [
-      {
-        assertion = ((cfg.webserver.nginx.enable -> !cfg.webserver.caddy.enable)
-          && (cfg.webserver.caddy.enable -> !cfg.webserver.nginx.enable));
-        message = ''
-          Both Nginx and Caddy webservers cannot be enable together. Check your configuration
-          and ensure you only enabled one.
-        '';
-      }
-    ];
-
     users.users.invoiceninja = lib.mkIf (cfg.user == "invoiceninja") {
       isSystemUser = true;
       home = cfg.dataDir;
@@ -286,7 +275,7 @@ in
         chromium = lib.lists.findSingle (x: x == pkgs.chromium) "none" "multiple" extraPrograms;
       in
       lib.mkMerge [
-        (rec {
+        ({
           APP_NAME = lib.mkDefault "\"Invoice Ninja\"";
           APP_ENV = lib.mkDefault "production";
           APP_DEBUG = lib.mkDefault false;
@@ -347,9 +336,9 @@ in
       '';
     };
 
-    users.users."${config.services.nginx.user}" = lib.mkIf (cfg.webserver.nginx.enable == true) { extraGroups = [ cfg.group ]; };
-    services.nginx = lib.mkIf (cfg.webserver.nginx.enable == true) {
-      inherit (cfg.webserver.nginx) enable;
+    users.users."${config.services.nginx.user}" = lib.mkIf (cfg.proxy.server == "nginx") { extraGroups = [ cfg.group ]; };
+    services.nginx = lib.mkIf (cfg.proxy.server == "nginx") {
+      enable = true;
 
       recommendedTlsSettings = true;
       recommendedGzipSettings = true;
@@ -359,7 +348,7 @@ in
       clientMaxBodySize = cfg.maxUploadSize;
 
       virtualHosts."${cfg.hostName}" = lib.mkMerge [
-        cfg.webserver.nginx.config
+        cfg.proxy.nginxConfig
         {
           root = lib.mkForce "${invoice-ninja}/public";
           locations = {
@@ -387,16 +376,16 @@ in
       ];
     };
 
-    users.users."${config.services.caddy.user}" = lib.mkIf (cfg.webserver.caddy.enable == true) { extraGroups = [ cfg.group ]; };
-    services.caddy = lib.mkIf (cfg.webserver.caddy.enable == true) {
-      inherit (cfg.webserver.caddy) enable;
+    users.users."${config.services.caddy.user}" = lib.mkIf (cfg.proxy.server == "caddy") { extraGroups = [ cfg.group ]; };
+    services.caddy = lib.mkIf (cfg.proxy.server == "caddy") {
+      enable = true;
 
       globalConfig = lib.mkIf (cfg.hostName == "localhost") ''
         auto_https disable_redirects
       '';
 
       virtualHosts."${cfg.hostName}" = lib.mkMerge [
-        cfg.webserver.caddy.config
+        cfg.proxy.caddyConfig
         {
           extraConfig = ''
             encode zstd gzip
@@ -487,8 +476,8 @@ in
         [[ ! -f ${cfg.dataDir}/.db-seeded ]] && invoice-ninja-manage db:seed --force && touch ${cfg.dataDir}/.db-seeded
 
         # Create Invoice Ninja admin account
-        [[ ! -f ${cfg.dataDir}/.admin-created ]] \
-          && invoice-ninja-manage ninja:create-account --email=${cfg.adminEmail} --password=${cfg.adminPassword} \
+        [[ (! -f ${cfg.dataDir}/.admin-created) && (${if cfg.adminAccount.createAdmin then "true" else "false"} == "true") ]] \
+          && invoice-ninja-manage ninja:create-account --email=${cfg.adminAccount.email} --password=${cfg.adminAccount.password} \
           && touch ${cfg.dataDir}/.admin-created
         
         invoice-ninja-manage route:cache
