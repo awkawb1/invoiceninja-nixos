@@ -10,7 +10,7 @@ let
   cfg = config.services.invoice-ninja;
   user = cfg.user;
   group = cfg.group;
-  invoice-ninja = pkgs.callPackage ../../../../pkgs/by-name/in/invoice-ninja/package.nix {
+  invoice-ninja = pkgs.callPackage ../package.nix {
     inherit (cfg) dataDir runtimeDir;
   };
   configFormat = pkgs.formats.keyValue { };
