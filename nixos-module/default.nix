@@ -1,7 +1,7 @@
 { overlays }:
 
 {
-  invoice-ninja = import ./invoice-ninja.nix
+  invoice-ninja = import ./invoice-ninja.nix;
   overlayNixpkgsForThisInstance = 
     { pkgs, ... }: {
       nixpkgs = {
