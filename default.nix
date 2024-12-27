@@ -7,26 +7,23 @@
 , runtimeDir ? "/run/invoice-ninja"
 }:
 
-let
-  # Helper script to generate an APP_KEY for .env
-  generate-invoice-ninja-app-key = writers.writeBashBin "generate-laravel-key" ''
-    echo "APP_KEY=base64:$(${openssl}/bin/openssl rand -base64 32)"
-  '';
-in
 php.buildComposerProject (finalAttrs: {
   pname = "invoice-ninja";
-  version = "5.10.3";
+  version = "5.11.3";
 
   src = fetchFromGitHub {
     owner = "invoiceninja";
     repo = "invoiceninja";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-QL6L+yT1yRQUTTGYGjaC4zbvzgw4ozgJSP2bYJCf014=";
+    hash = "sha256-PsDHQAFy7fnz03zTdJtcUzOVKT6jjHv0DmVmyLAOwkc=";
   };
 
-  vendorHash = "sha256-LGNBgaWWX2a8w9uE3+fVtBDqgbcv69FNnka4HjZKqsQ=";
+  vendorHash = "sha256-RA7IkPXz1HdqQAyB/VIbYg3BmCnlJKLxIVtODIRmZxg=";
 
-  propagatedBuildInput = [ generate-invoice-ninja-app-key ];
+  # Patch sources for more restrictive permissions
+  patches = [
+    ./disable-react-for-admin.patch
+  ];
 
   # Upstream composer.json has invalid license, webpatser/laravel-countries package is pointing
   # to commit-ref, and php required in require and require-dev
@@ -36,21 +33,19 @@ php.buildComposerProject (finalAttrs: {
     mv "$out/share/php/${finalAttrs.pname}"/* $out
     rm -R $out/bootstrap/cache
 
+    rm -rf $out/public/storage
+
     # Move static contents for the NixOS module to pick it up, if needed.
     mv $out/bootstrap $out/bootstrap-static
     mv $out/storage $out/storage-static
-    mv $out/vite.config.ts $out/vite.config.ts.static
-    mv $out/public/images $out/public/images-static
-    mv $out/public/react $out/public/react-static
+    mv $out/vendor/bin $out/vendor/bin-static
 
-    ln -s ${dataDir}/public/images $out/public/
-    ln -s ${dataDir}/public/react $out/public/
-    ln -s ${dataDir}/vite.config.ts $out/
+    # Link NixOS module files to derivation output
     ln -s ${dataDir}/.env $out/.env
     ln -s ${dataDir}/storage $out/
+    ln -s ${dataDir}/storage/app/public $out/public/storage
+    ln -s ${dataDir}/vendor/bin $out/vendor
     ln -s ${runtimeDir} $out/bootstrap
-
-    chmod +x $out/artisan
   '';
 
   meta = {
