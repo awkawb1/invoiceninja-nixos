@@ -9,13 +9,13 @@
 
 php.buildComposerProject (finalAttrs: {
   pname = "invoice-ninja";
-  version = "5.11.5";
+  version = "5.11.6";
 
   src = fetchFromGitHub {
     owner = "invoiceninja";
     repo = "invoiceninja";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-PHETBp6BeGblJYjuz+l8eTdcBS26cxtXrnM/W6pCiLI=";
+    hash = "sha256-RWkvMVerqWTNb1U2oE14rWnqImdPyShaUemlTQZf+sQ=";
   };
 
   vendorHash = "sha256-RA7IkPXz1HdqQAyB/VIbYg3BmCnlJKLxIVtODIRmZxg=";
