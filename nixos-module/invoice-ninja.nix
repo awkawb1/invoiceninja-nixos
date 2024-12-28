@@ -392,7 +392,7 @@ in
       };
       caddyConfig = lib.mkOption {
         type = lib.types.submodule (
-          import (modulesPath + "services/web-servers/caddy/vhost-options.nix") { cfg = config.services.caddy; }
+          import (modulesPath + "/services/web-servers/caddy/vhost-options.nix") { cfg = config.services.caddy; }
         );
         default = { };
         description = ''
@@ -402,7 +402,7 @@ in
       };
       nginxConfig = lib.mkOption {
         type = lib.types.submodule (
-          (import (modulesPath + "services/web-servers/nginx/vhost-options.nix") { inherit config lib; })
+          (import (modulesPath + "/services/web-servers/nginx/vhost-options.nix") { inherit config lib; })
         );
         default = { };
         description = ''
