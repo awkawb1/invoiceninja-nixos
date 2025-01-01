@@ -1,5 +1,5 @@
 {
-  description = "An Invoice Ninja package and a module which can be added to a NixOS configuration";
+  description = "An Invoice Ninja package and module.";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
 
@@ -18,19 +18,20 @@
           overlays = overlayList;
         }
       );
-
     in
     rec {
+      nixosConfigurations.test = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [ ./tests ];
+      };
 
-      # A Nixpkgs overlay that provides a 'Invoice Ninja' package.
       overlays.default = final: prev: { invoice-ninja = final.callPackage ./package.nix { }; };
 
       packages = forEachSystem (system: {
-        invoice-ninja = pkgsBySystem.${system}.invoice-ninja;
-        default = pkgsBySystem.${system}.invoice-ninja;
+        invoiceninja = pkgsBySystem.${system}.invoiceninja;
+        default = pkgsBySystem.${system}.invoiceninja;
       });
 
       nixosModules = import ./nixos-module { overlays = overlayList; };
-
     };
 }
