@@ -25,7 +25,7 @@
         modules = [ ./tests ];
       };
 
-      overlays.default = final: prev: { invoice-ninja = final.callPackage ./package.nix { }; };
+      overlays.default = final: prev: { invoiceninja = final.callPackage ./package.nix { }; };
 
       packages = forEachSystem (system: {
         invoiceninja = pkgsBySystem.${system}.invoiceninja;
