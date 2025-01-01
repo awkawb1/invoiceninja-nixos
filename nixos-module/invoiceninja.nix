@@ -8,14 +8,14 @@
 }:
 
 let
-  cfg = config.services.invoice-ninja;
+  cfg = config.services.invoiceninja;
   user = cfg.user;
   group = cfg.group;
-  invoice-ninja = pkgs.callPackage ../package.nix {
+  invoiceninja = pkgs.callPackage ../package.nix {
     inherit (cfg) dataDir runtimeDir;
   };
   configFormat = pkgs.formats.keyValue { };
-  configFile = pkgs.writeText "invoice-ninja-env" (lib.generators.toKeyValue { } cfg.settings);
+  configFile = pkgs.writeText "invoiceninja-env" (lib.generators.toKeyValue { } cfg.settings);
 
   # PHP environment
   phpPackage = cfg.phpPackage.buildEnv {
@@ -53,8 +53,8 @@ let
   extraPrograms = [ chromium ];
 
   # Management script
-  invoice-ninja-manage = pkgs.writeShellScriptBin "invoice-ninja-manage" ''
-    cd ${invoice-ninja}
+  invoiceninja-manage = pkgs.writeShellScriptBin "invoiceninja-manage" ''
+    cd ${invoiceninja}
     sudo=exec
     if [[ "$USER" != ${user} ]]; then
       sudo='exec /run/wrappers/bin/sudo -u ${user}'
@@ -63,10 +63,10 @@ let
   '';
 in
 {
-  options.services.invoice-ninja = {
-    enable = lib.mkEnableOption "invoice-ninja";
+  options.services.invoiceninja = {
+    enable = lib.mkEnableOption "invoiceninja";
 
-    package = lib.mkPackageOption pkgs "invoice-ninja" { };
+    package = lib.mkPackageOption pkgs "invoiceninja" { };
 
     phpPackage = lib.mkPackageOption pkgs "php82" { };
 
@@ -94,7 +94,7 @@ in
       '';
     };
 
-    msmtp.accounts.invoice-ninja = lib.mkOption {
+    msmtp.accounts.invoiceninja = lib.mkOption {
       type = lib.types.attrs;
       default = { };
       example = {
@@ -107,9 +107,9 @@ in
         passwordeval = "cat /secrets/password.txt";
       };
       description = ''
-        Define the msmtp configuration for an invoice-ninja account which
+        Define the msmtp configuration for an invoiceninja account which
         will be used by Invoice Ninja to send email message when
-        `config.services.invoice-ninja.settings.MAIL_MAILER` is `sendmail`.
+        `config.services.invoiceninja.settings.MAIL_MAILER` is `sendmail`.
 
         It is advised to use the `passwordeval` setting to read the password
         from a secret file to avoid having it written in the world-readable
@@ -125,18 +125,18 @@ in
 
     dataDir = lib.mkOption {
       type = lib.types.str;
-      default = "/var/lib/invoice-ninja";
+      default = "/var/lib/invoiceninja";
       description = ''
-        State directory of the `invoice-ninja` user which holds
+        State directory of the `invoiceninja` user which holds
         the application's state and data.
       '';
     };
 
     runtimeDir = lib.mkOption {
       type = lib.types.str;
-      default = "/run/invoice-ninja";
+      default = "/run/invoiceninja";
       description = ''
-        Rutime directory of the `invoice-ninja` user which holds
+        Rutime directory of the `invoiceninja` user which holds
         the application's caches and temporary files.
       '';
     };
@@ -207,7 +207,7 @@ in
         options = {
           APP_NAME = lib.mkOption {
             type = lib.types.str;
-            default = "Invoice Ninja";
+            default = ''"Invoice Ninja"'';
             description = "Your application name - used in client portal title banner";
           };
           APP_DEBUG = lib.mkOption {
@@ -256,13 +256,13 @@ in
           };
           MAIL_SENDMAIL_PATH = lib.mkOption {
             type = lib.types.str;
-            default = ''"/run/wrappers/bin/sendmail -t -a invoice-ninja"'';
+            default = ''"/run/wrappers/bin/sendmail -t -a invoiceninja"'';
             description = ''
               Path to sendmail along with arguments for Invoice Ninja to use when using sendmail
               as mail transport agent.
 
               :: note
-              The default value will work with the `msmtp.accounts.invoice-ninja` setting. Only
+              The default value will work with the `msmtp.accounts.invoiceninja` setting. Only
               change if you know what your doing.
               ::
             '';
@@ -294,7 +294,7 @@ in
             default =
               if cfg.redis.createLocally then "redis" else (if cfg.database.createLocally then "database" else "file");
             defaultText = lib.literalExpression ''
-              if config.services.invoice-ninja.redis.enable
+              if config.services.invoiceninja.redis.enable
               then "redis"
               else (if config.services.invoie-ninja.database.createLocally then "database" else "file")
             '';
@@ -317,7 +317,7 @@ in
             default =
               if cfg.redis.createLocally then "redis" else (if cfg.database.createLocally then "database" else "sync");
             defaultText = lib.literalExpression ''
-              if config.services.invoice-ninja.redis.enable
+              if config.services.invoiceninja.redis.enable
               then "redis"
               else (if config.services.invoie-ninja.database.createLocally then "database" else "sync")
             '';
@@ -329,7 +329,7 @@ in
               "redis"
             ];
             default = if cfg.redis.createLocally then "redis" else "file";
-            defaultText = lib.literalExpression ''if config.services.invoice-ninja.redis.enable then "redis" else "file"'';
+            defaultText = lib.literalExpression ''if config.services.invoiceninja.redis.enable then "redis" else "file"'';
             description = "Laravel cache driver for Invoice Ninja to use.";
           };
         };
@@ -337,7 +337,7 @@ in
     };
 
     adminAccount = {
-      createAdmin = lib.mkOption {
+      enable = lib.mkOption {
         type = lib.types.bool;
         default = true;
         description = ''
@@ -347,7 +347,7 @@ in
       };
       email = lib.mkOption {
         type = lib.types.str;
-        default = "example@email.com";
+        default = "admin@email.com";
         description = "Email address of the first (admin) account for this Invoice Ninja installation";
       };
       passwordFile = lib.mkOption {
@@ -423,14 +423,14 @@ in
 
     users.groups.invoiceninja = lib.mkIf (cfg.group == "invoiceninja") { };
 
-    environment.systemPackages = [ invoice-ninja-manage ] ++ extraPrograms;
+    environment.systemPackages = [ invoiceninja-manage ] ++ extraPrograms;
 
     programs.msmtp = lib.mkIf (cfg.settings.MAIL_MAILER == "sendmail") {
       inherit (cfg.msmtp) accounts;
       enable = true;
     };
 
-    services.invoice-ninja.settings = lib.mkMerge [
+    services.invoiceninja.settings = lib.mkMerge [
       ({
         APP_URL = lib.mkDefault (
           if (cfg.hostname == "localhost") then ("http://" + cfg.hostname) else ("https://" + cfg.hostname)
@@ -452,12 +452,12 @@ in
         DB_USERNAME = lib.mkDefault user;
       })
       (lib.mkIf cfg.redis.createLocally {
-        REDIS_HOST = lib.mkDefault config.services.redis.servers.invoice-ninja.bind;
-        REDIS_PORT = lib.mkDefault config.services.redis.servers.invoice-ninja.port;
+        REDIS_HOST = lib.mkDefault config.services.redis.servers.invoiceninja.bind;
+        REDIS_PORT = lib.mkDefault config.services.redis.servers.invoiceninja.port;
       })
     ];
 
-    services.phpfpm.pools.invoice-ninja = {
+    services.phpfpm.pools.invoiceninja = {
       inherit user group phpPackage;
 
       settings = {
@@ -474,7 +474,7 @@ in
       '';
     };
 
-    services.redis.servers.invoice-ninja = lib.mkIf cfg.redis.createLocally {
+    services.redis.servers.invoiceninja = lib.mkIf cfg.redis.createLocally {
       enable = true;
       port = 6379;
     };
@@ -495,7 +495,7 @@ in
       virtualHosts."${cfg.hostname}" = lib.mkMerge [
         cfg.proxy.nginxConfig
         {
-          root = lib.mkForce "${invoice-ninja}/public";
+          root = lib.mkForce "${invoiceninja}/public";
           addSSL = lib.mkForce true;
           enableACME = lib.mkForce true;
           locations = {
@@ -514,7 +514,7 @@ in
             '';
             "~ \\.php$".extraConfig = "return 403;";
             "= /index.php".extraConfig = ''
-              fastcgi_pass unix:${config.services.phpfpm.pools.invoice-ninja.socket};
+              fastcgi_pass unix:${config.services.phpfpm.pools.invoiceninja.socket};
             '';
             "~ /\\.ht".extraConfig = "deny all;";
           };
@@ -533,35 +533,43 @@ in
     users.users."${config.services.caddy.user}" = lib.mkIf (cfg.proxy.server == "caddy") {
       extraGroups = [ cfg.group ];
     };
-    services.caddy = lib.mkIf (cfg.proxy.server == "caddy") {
-      enable = true;
+    services.caddy = 
+      let
+        proto_hostname = (
+          if (cfg.hostname == "localhost")
+          then (cfg.hostname + ":80")
+          else (cfg.hostname + ":443")
+        );
+      in
+      lib.mkIf (cfg.proxy.server == "caddy") {
+        enable = true;
 
-      globalConfig = lib.mkIf (cfg.hostname == "localhost") ''
-        auto_https disable_redirects
-      '';
+        globalConfig = lib.mkIf (cfg.hostname == "localhost") ''
+          auto_https disable_redirects
+        '';
 
-      virtualHosts."${cfg.hostname}" = lib.mkMerge [
-        cfg.proxy.caddyConfig
-        {
-          hostName = lib.mkForce cfg.hostname;
-          extraConfig = ''
-            encode zstd gzip
-            root * ${invoice-ninja}/public
-            php_fastcgi unix/${config.services.phpfpm.pools.invoice-ninja.socket}
-            try_files {path} /index.html
-            header {
-              Access-Control-Allow-Origin "*"
-              Access-Control-Allow-Methods "*"
-              Access-Control-Max-Age "0"
-              Access-Control-Allow-Headers "X-API-COMPANY-KEY,X-API-SECRET,X-API-TOKEN,X-API-PASSWORD,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Disposition,Content-Type,Range,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE"
-              Access-Control-Expose-Headers "X-APP-VERSION,X-MINIMUM-CLIENT-VERSION,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE"
-              Access-Control-Allow-Credentials false
-            }
-            file_server
-          '';
-        }
-      ];
-    };
+        virtualHosts."${proto_hostname}" = lib.mkMerge [
+          cfg.proxy.caddyConfig
+          {
+            hostName = lib.mkForce proto_hostname;
+            extraConfig = ''
+              encode zstd gzip
+              root * ${invoiceninja}/public
+              php_fastcgi unix/${config.services.phpfpm.pools.invoiceninja.socket}
+              try_files {path} /index.html
+              header {
+                Access-Control-Allow-Origin "*"
+                Access-Control-Allow-Methods "*"
+                Access-Control-Max-Age "0"
+                Access-Control-Allow-Headers "X-API-COMPANY-KEY,X-API-SECRET,X-API-TOKEN,X-API-PASSWORD,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Disposition,Content-Type,Range,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE"
+                Access-Control-Expose-Headers "X-APP-VERSION,X-MINIMUM-CLIENT-VERSION,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE"
+                Access-Control-Allow-Credentials false
+              }
+              file_server
+            '';
+          }
+        ];
+      };
 
     services.mysql = lib.mkIf (cfg.database.createLocally) {
       enable = lib.mkDefault true;
@@ -577,33 +585,33 @@ in
       ];
     };
 
-    systemd.services.phpfpm-invoice-ninja.after = [ "invoice-ninja-data-setup.service" ];
-    systemd.services.phpfpm-invoice-ninja.requires = [
-      "invoice-ninja-data-setup.service"
+    systemd.services.phpfpm-invoiceninja.after = [ "invoiceninja-data-setup.service" ];
+    systemd.services.phpfpm-invoiceninja.requires = [
+      "invoiceninja-data-setup.service"
     ] ++ lib.optional cfg.database.createLocally "mysql.service";
     # Ensure chromium is available
-    systemd.services.phpfpm-invoice-ninja.path = extraPrograms;
+    systemd.services.phpfpm-invoiceninja.path = extraPrograms;
 
-    systemd.services.invoice-ninja-queue-worker = {
+    systemd.services.invoiceninja-queue-worker = {
       description = "Invoice Ninja periodic tasks";
-      after = [ "invoice-ninja-data-setup.service" ];
-      requires = [ "phpfpm-invoice-ninja.service" ];
+      after = [ "invoiceninja-data-setup.service" ];
+      requires = [ "phpfpm-invoiceninja.service" ];
       wantedBy = [ "multi-user.target" ];
-      reloadTriggers = [ invoice-ninja ];
-      reload = "${invoice-ninja-manage}/bin/invoice-ninja-manage queue:restart";
+      reloadTriggers = [ invoiceninja ];
+      reload = "${invoiceninja-manage}/bin/invoiceninja-manage queue:restart";
 
       serviceConfig = {
-        ExecStart = "${invoice-ninja-manage}/bin/invoice-ninja-manage queue:work ${
+        ExecStart = "${invoiceninja-manage}/bin/invoiceninja-manage queue:work ${
           lib.strings.optionalString (cfg.settings.QUEUE_CONNECTION == "redis") "redis"
         }";
         User = user;
         Group = group;
-        StateDirectory = lib.mkIf (cfg.dataDir == "/var/lib/invoice-ninja") "invoice-ninja";
+        StateDirectory = lib.mkIf (cfg.dataDir == "/var/lib/invoiceninja") "invoiceninja";
         Restart = "always";
       };
     };
 
-    systemd.services.invoice-ninja-data-setup = {
+    systemd.services.invoiceninja-data-setup = {
       description = "Invoice Ninja setup: migrations, environment file update, cache reload, data changes";
       wantedBy = [ "multi-user.target" ];
       after = lib.optional cfg.database.createLocally "mysql.service";
@@ -612,7 +620,7 @@ in
         with pkgs;
         [
           bash
-          invoice-ninja-manage
+          invoiceninja-manage
           rsync
           config.services.mysql.package
         ]
@@ -622,7 +630,7 @@ in
         Type = "oneshot";
         User = user;
         Group = group;
-        StateDirectory = lib.mkIf (cfg.dataDir == "/var/lib/invoice-ninja") "invoice-ninja";
+        StateDirectory = lib.mkIf (cfg.dataDir == "/var/lib/invoiceninja") "invoiceninja";
         StateDirectoryMode = "0750";
         LoadCredential = [
           "env-secrets:${cfg.secretFile}"
@@ -645,38 +653,36 @@ in
         cat "$CREDENTIALS_DIRECTORY/env-secrets" >> ${cfg.dataDir}/.env
 
         # Link the static storage (package provided) to the runtime storage
-        # Necessary for cities.json and static images.
-        rsync -av --no-perms ${invoice-ninja}/storage-static/ ${cfg.dataDir}/storage
+        rsync -av --no-perms ${invoiceninja}/storage-static/ ${cfg.dataDir}/storage
 
         # Link the static vendor/bin (package provided) to the runtime vendor/bin
-        # Necessary for cities.json and static images.
-        rsync -av --no-perms ${invoice-ninja}/vendor/bin-static/ ${cfg.dataDir}/vendor/bin
+        rsync -av --no-perms ${invoiceninja}/vendor/bin-static/ ${cfg.dataDir}/vendor/bin
 
         # Link the app.php in the runtime folder.
         # We cannot link the cache folder only because bootstrap folder needs to be writeable.
-        ln -sf ${invoice-ninja}/bootstrap-static/app.php ${cfg.runtimeDir}/app.php
+        ln -sf ${invoiceninja}/bootstrap-static/app.php ${cfg.runtimeDir}/app.php
 
         # Perform the first migration
-        [[ ! -f ${cfg.dataDir}/.initial-migration ]] && invoice-ninja-manage migrate --force && touch ${cfg.dataDir}/.initial-migration
+        [[ ! -f ${cfg.dataDir}/.initial-migration ]] && invoiceninja-manage migrate --force && touch ${cfg.dataDir}/.initial-migration
 
         # Seed database with records
         # Necessary for languages, currencies, countries, etc.
-        [[ ! -f ${cfg.dataDir}/.db-seeded ]] && invoice-ninja-manage db:seed --force && touch ${cfg.dataDir}/.db-seeded
+        [[ ! -f ${cfg.dataDir}/.db-seeded ]] && invoiceninja-manage db:seed --force && touch ${cfg.dataDir}/.db-seeded
 
         # Create Invoice Ninja admin account
         [[ (! -f ${cfg.dataDir}/.admin-created) && (${
-          if cfg.adminAccount.createAdmin then "true" else "false"
+          if cfg.adminAccount.enable then "true" else "false"
         } == "true") ]] \
-          && invoice-ninja-manage ninja:create-account --email=${cfg.adminAccount.email} --password=$(cat $CREDENTIALS_DIRECTORY/admin-pass) \
+          && invoiceninja-manage ninja:create-account --email=${cfg.adminAccount.email} --password=$(cat $CREDENTIALS_DIRECTORY/admin-pass) \
           && touch ${cfg.dataDir}/.admin-created
 
-        invoice-ninja-manage route:cache
-        invoice-ninja-manage view:cache
-        invoice-ninja-manage config:cache
+        invoiceninja-manage route:cache
+        invoiceninja-manage view:cache
+        invoiceninja-manage config:cache
       '';
     };
 
-    systemd.tmpfiles.settings."10-invoice-ninja" =
+    systemd.tmpfiles.settings."10-invoiceninja" =
       lib.attrsets.genAttrs
         [
           cfg.dataDir

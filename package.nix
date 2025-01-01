@@ -3,12 +3,12 @@
 , openssl
 , writers
 , fetchFromGitHub
-, dataDir ? "/var/lib/invoice-ninja"
-, runtimeDir ? "/run/invoice-ninja"
+, dataDir ? "/var/lib/invoiceninja"
+, runtimeDir ? "/run/invoiceninja"
 }:
 
 php.buildComposerProject (finalAttrs: {
-  pname = "invoice-ninja";
+  pname = "invoiceninja";
   version = "5.11.7";
 
   src = fetchFromGitHub {
@@ -20,7 +20,6 @@ php.buildComposerProject (finalAttrs: {
 
   vendorHash = "sha256-RA7IkPXz1HdqQAyB/VIbYg3BmCnlJKLxIVtODIRmZxg=";
 
-  # Patch sources for more restrictive permissions
   patches = [
     ./disable-react-for-admin.patch
   ];
