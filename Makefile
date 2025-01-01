@@ -34,14 +34,12 @@ clean: ## Clean build artifacts and shutdown running virtual machines
 	exit 0
 
 build-vm: clean ## Build virtual machine for testing
-	nixos-rebuild build-vm \
-		-I nixpkgs=http://nixos.org/channels/nixos-24.05/nixexprs.tar.xz \
-		-I nixos-config=./tests/test-config.nix
+	nix build ".#nixosConfigurations.test.config.system.build.vm"
 
 boot-vm: ## Run virtual machine in current terminal
 	QEMU_KERNEL_PARAMS=console=ttyS0 \
 	QEMU_NET_OPTS=hostfwd=tcp::8080-:80 \
-	./result/bin/run-nixos-vm \
-		-nographic; \
+	QEMU_OPTS=-nographic \
+	./result/bin/run-nixos-vm
 	reset
 
