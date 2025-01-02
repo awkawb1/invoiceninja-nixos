@@ -3,7 +3,7 @@
 {
   imports = [
     (modulesPath + "/profiles/qemu-guest.nix")
-    ../nixos-module/invoice-ninja.nix
+    ../nixos-module/invoiceninja.nix
   ];
 
   system.stateVersion = "24.11";
@@ -16,7 +16,7 @@
     initialPassword = "test";
   };
 
-  services.invoice-ninja = {
+  services.invoiceninja = {
     enable = true;
     proxy.server = "caddy";
     adminAccount.passwordFile = ./invoice_ninja_test_password;
