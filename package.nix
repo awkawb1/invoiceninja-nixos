@@ -37,13 +37,11 @@ php.buildComposerProject (finalAttrs: {
     # Move static contents for the NixOS module to pick it up, if needed.
     mv $out/bootstrap $out/bootstrap-static
     mv $out/storage $out/storage-static
-    mv $out/vendor/bin $out/vendor/bin-static
 
     # Link NixOS module files to derivation output
     ln -s ${dataDir}/.env $out/.env
     ln -s ${dataDir}/storage $out/
     ln -s ${dataDir}/storage/app/public $out/public/storage
-    ln -s ${dataDir}/vendor/bin $out/vendor
     ln -s ${runtimeDir} $out/bootstrap
   '';
 
