@@ -1,10 +1,9 @@
-{
-  config,
-  lib,
-  modulesPath,
-  options,
-  pkgs,
-  ...
+{ config
+, lib
+, modulesPath
+, options
+, pkgs
+, ...
 }:
 
 let
@@ -485,7 +484,7 @@ in
     services.nginx = lib.mkIf (cfg.proxy.server == "nginx") {
       enable = true;
 
-      recommendedTlsSettings = true;
+      recommendedTlsSettings = (if (cfg.hostname == "localhost") then false else true);
       recommendedGzipSettings = true;
       recommendedProxySettings = true;
       recommendedOptimisation = true;
@@ -496,8 +495,8 @@ in
         cfg.proxy.nginxConfig
         {
           root = lib.mkForce "${invoiceninja}/public";
-          addSSL = lib.mkForce true;
-          enableACME = lib.mkForce true;
+          addSSL = lib.mkForce (if (cfg.hostname == "localhost") then false else true);
+          enableACME = lib.mkForce (if (cfg.hostname == "localhost") then false else true);
           locations = {
             "/".tryFiles = "$uri $uri/ /index.php?$query_string";
             "/".extraConfig = ''
@@ -654,9 +653,6 @@ in
 
         # Link the static storage (package provided) to the runtime storage
         rsync -av --no-perms ${invoiceninja}/storage-static/ ${cfg.dataDir}/storage
-
-        # Link the static vendor/bin (package provided) to the runtime vendor/bin
-        rsync -av --no-perms ${invoiceninja}/vendor/bin-static/ ${cfg.dataDir}/vendor/bin
 
         # Link the app.php in the runtime folder.
         # We cannot link the cache folder only because bootstrap folder needs to be writeable.
