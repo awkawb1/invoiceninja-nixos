@@ -9,16 +9,16 @@
 
 php.buildComposerProject (finalAttrs: {
   pname = "invoiceninja";
-  version = "5.11.7";
+  version = "5.11.41";
 
   src = fetchFromGitHub {
     owner = "invoiceninja";
     repo = "invoiceninja";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-wfKYe31ZulXJfbY5naFipXUhP0W6KUYbaoMuiV8DTas=";
+    hash = "sha256-6fCuNv+PIlUe9fOZwP6VfLuomSlUTmBiF/bjxKfs9Ig=";
   };
 
-  vendorHash = "sha256-RA7IkPXz1HdqQAyB/VIbYg3BmCnlJKLxIVtODIRmZxg=";
+  vendorHash = "sha256-KoBJJU0ViX99dNVxO8/7gk2SuDwuXbcHkqI5CpiHoLE=";
 
   patches = [
     ./disable-react-for-admin.patch
