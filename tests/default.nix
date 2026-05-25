@@ -1,4 +1,4 @@
-{ modulesPath, ... }:
+{ pkgs, modulesPath, ... }:
 
 {
   imports = [
@@ -6,7 +6,7 @@
     ../nixos-module/invoiceninja.nix
   ];
 
-  system.stateVersion = "24.11";
+  system.stateVersion = "25.11";
 
   nixpkgs.config.allowUnfree = true;
 
@@ -18,9 +18,10 @@
 
   services.invoiceninja = {
     enable = true;
-    proxy.server = "caddy";
+    proxy.server = "nginx";
     adminAccount.passwordFile = ./invoice_ninja_test_password;
     secretFile = ./test.env;
+    settings.APP_DEBUG = true;
   };
 
   networking.firewall.enable = false;
