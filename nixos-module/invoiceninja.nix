@@ -498,28 +498,42 @@ in
           addSSL = lib.mkForce (if (cfg.hostname == "localhost") then false else true);
           enableACME = lib.mkForce (if (cfg.hostname == "localhost") then false else true);
           locations = {
+            # Handle Laravel Routes
             "/".tryFiles = "$uri $uri/ /index.php?$query_string";
-            "/".extraConfig = ''
-              if (!-e $request_filename) {
-                rewrite ^(.+)$ /index.php?q=$1 last;
-              }
-              add_header 'Access-Control-Allow-Origin' '*';
-              add_header 'Access-Control-Allow-Methods' '*';
-              add_header 'Access-Control-Max-Age' 0;
-              add_header 'Content-Length' 0;
-              add_header 'Access-Control-Allow-Headers' 'X-API-COMPANY-KEY,X-API-SECRET,X-API-TOKEN,X-API-PASSWORD,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Disposition,Content-Type,Range,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE';
-              add_header 'Access-Control-Expose-Headers' 'X-APP-VERSION,X-MINIMUM-CLIENT-VERSION,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE';
-              add_header 'Access-Control-Allow-Credentials' false;
-            '';
-            "~ \\.php$".extraConfig = "return 403;";
-            "= /index.php".extraConfig = ''
+
+            # PHP Processing
+            "~ \\.php$".extraConfig = ''
+              include ${config.services.nginx.package}/conf/fastcgi_params;
+              fastcgi_param SCRIPT_FILENAME $request_filename;
+              fastcgi_split_path_info ^(.+\.php)(/.+)$;
               fastcgi_pass unix:${config.services.phpfpm.pools.invoiceninja.socket};
+              fastcgi_index index.php;
             '';
+
+            # Security: Deny access to hidden files
             "~ /\\.ht".extraConfig = "deny all;";
+
+            # Static Files Caching
+            "~* \\.(jpg|jpeg|png|gif|ico|css|js)$".extraConfig = ''
+              expires 1y;
+              add_header Cache-Control "public, immutable";
+            '';
           };
           extraConfig = ''
-            index index.html index.htm index.php;
+            index index.php index.html index.htm;
             error_page 404 /index.php;
+
+            if (!-e $request_filename) {
+              rewrite ^(.+)$ /index.php?q= last;
+            }
+
+            add_header 'Access-Control-Allow-Origin' '*';
+            add_header 'Access-Control-Allow-Methods' '*';
+            add_header 'Access-Control-Max-Age' 0;
+            add_header 'Content-Length' 0;
+            add_header 'Access-Control-Allow-Headers' 'X-API-COMPANY-KEY,X-API-SECRET,X-API-TOKEN,X-API-PASSWORD,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Disposition,Content-Type,Range,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE';
+            add_header 'Access-Control-Expose-Headers' 'X-APP-VERSION,X-MINIMUM-CLIENT-VERSION,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE';
+            add_header 'Access-Control-Allow-Credentials' false;
           '';
         }
         (lib.mkIf (cfg.hostname != "localhost") {
@@ -553,9 +567,8 @@ in
             hostName = lib.mkForce proto_hostname;
             extraConfig = ''
               encode zstd gzip
-              root * ${invoiceninja}/public
+              root ${invoiceninja}/public
               php_fastcgi unix/${config.services.phpfpm.pools.invoiceninja.socket}
-              try_files {path} /index.html
               header {
                 Access-Control-Allow-Origin "*"
                 Access-Control-Allow-Methods "*"
