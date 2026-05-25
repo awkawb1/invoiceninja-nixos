@@ -1,7 +1,7 @@
 {
   description = "An Invoice Ninja package and module.";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
 
   outputs =
     { self, nixpkgs, nix, }:
