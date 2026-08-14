@@ -8,10 +8,8 @@
 
   nixpkgs.config.allowUnfree = true;
 
-  users.users.test = {
-    isNormalUser = true;
-    extraGroups = [ "wheel" ];
-    initialPassword = "test";
+  users.users.root = {
+    initialPassword = "toor";
   };
 
   services.invoiceninja = {
