@@ -6,8 +6,6 @@
     ../nixos-module/invoiceninja.nix
   ];
 
-  system.stateVersion = "25.11";
-
   nixpkgs.config.allowUnfree = true;
 
   users.users.test = {
