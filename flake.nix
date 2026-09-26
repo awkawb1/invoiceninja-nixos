@@ -32,6 +32,10 @@
         default = pkgsBySystem.${system}.invoiceninja;
       });
 
+      checks = forEachSystem (system: {
+        invoiceninja = import ./tests/nixos-test.nix { inherit system; nixpkgsPath = nixpkgs; };
+      });
+
       nixosModules = import ./nixos-module { overlays = overlayList; };
     };
 }

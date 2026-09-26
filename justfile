@@ -31,3 +31,8 @@ boot-vm:
         ./result/bin/run-nixos-vm
     reset
 
+[doc('Run the automated NixOS VM test')]
+[group('main')]
+test:
+    nix flake check -L
+
