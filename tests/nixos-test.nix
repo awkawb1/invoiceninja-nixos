@@ -21,6 +21,8 @@ pkgs.testers.nixosTest {
   };
 
   testScript = ''
+    import json
+
     def check_invoiceninja(machine, proxy_unit):
         machine.wait_for_unit("mysql.service")
         machine.wait_for_unit("redis-invoiceninja.service")
@@ -64,6 +66,19 @@ pkgs.testers.nixosTest {
                 + "-d '{\"email\":\"${adminEmail}\",\"password\":\"${adminPassword}\"}'"
             )
             assert "${adminEmail}" in login_response, f"login did not succeed: {login_response}"
+
+        with subtest("full language list is available, not just the af/ca/id migration's 3"):
+            # Regression check: migration 2025_08_31_224356_additional_languages_af_ca_id.php runs
+            # during `migrate`, before db:seed's LanguageSeeder has populated the other 42 rows, and
+            # does Cache::forever('languages', Language::all()) - permanently caching just the 3
+            # languages it sees at that moment. invoiceninja-data-setup works around this with
+            # `invoiceninja-manage cache:forget languages`; this confirms the workaround is in place.
+            token = json.loads(login_response)["data"][0]["token"]["token"]
+            statics = machine.succeed(
+                f"curl -sf http://localhost/api/v1/statics -H 'X-API-TOKEN: {token}'"
+            )
+            language_count = len(json.loads(statics)["languages"])
+            assert language_count > 40, f"expected ~45 languages, got {language_count}"
 
 
     nginx.start()

@@ -696,6 +696,14 @@ in
         # Necessary for languages, currencies, countries, etc.
         [[ ! -f ${cfg.dataDir}/.db-seeded ]] && invoiceninja-manage db:seed --force && touch ${cfg.dataDir}/.db-seeded
 
+        # Work around an upstream bug: migration 2025_08_31_224356_additional_languages_af_ca_id.php
+        # runs during `migrate` (before db:seed's LanguageSeeder has populated the other 42 rows) and
+        # does `Cache::forever('languages', Language::all())`, permanently caching just the 3 languages
+        # it sees at that moment. Without this, the language list stays stuck at those 3 forever,
+        # since StaticServiceProvider checks this cache key before ever querying the DB again.
+        # Unconditional (not marker-gated) so it also self-heals installs that hit this before the fix.
+        invoiceninja-manage cache:forget languages
+
         # Create Invoice Ninja admin account
         [[ (! -f ${cfg.dataDir}/.admin-created) && (${
           if cfg.adminAccount.enable then "true" else "false"

@@ -97,7 +97,13 @@ expect Nix to report the correct hash on a failed build (or use `nix-prefetch`/`
     clears bootstrap/opcode cache, rebuilds `.env`, rsyncs static storage into `dataDir`, symlinks the runtime
     `app.php`, and guards one-time actions (`migrate`, `db:seed`, admin account creation) behind marker files
     (`.initial-migration`, `.db-seeded`, `.admin-created`) in `dataDir`. `phpfpm-invoiceninja.service` and
-    `invoiceninja-queue-worker.service` both depend on it.
+    `invoiceninja-queue-worker.service` both depend on it. It also unconditionally runs
+    `invoiceninja-manage cache:forget languages` on every activation, working around an upstream bug: migration
+    `2025_08_31_224356_additional_languages_af_ca_id.php` runs during `migrate` (before `db:seed`'s
+    `LanguageSeeder` has populated the other 42 rows) and does `Cache::forever('languages', Language::all())`,
+    permanently caching just the 3 languages it sees at that moment — without this, the language dropdown in
+    the app stays stuck at 3 entries forever, since `StaticServiceProvider` checks that cache key before ever
+    querying the DB again.
   - `invoiceninja-scheduler.timer`/`.service` run `artisan schedule:run` every minute — this is what drives
     Invoice Ninja's own internal cron-scheduled jobs (recurring invoices, scheduled reports, etc.); without it the
     app's dashboard reports "cron jobs are not enabled". Laravel's scheduler is just a dispatcher, so this one
