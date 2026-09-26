@@ -112,6 +112,10 @@ expect Nix to report the correct hash on a failed build (or use `nix-prefetch`/`
     earlier version of this module additionally set a second, static set of `Access-Control-*` headers at the
     proxy level, which browsers reject as conflicting duplicates (server-to-server/curl checks don't notice,
     since only browsers enforce CORS header validation).
+  - Caddy matches vhosts on the exact `Host` header, unlike nginx (where a single vhost acts as the default
+    regardless of `Host`). When `hostname == "localhost"`, the caddy vhost adds `serverAliases` for
+    `127.0.0.1:80`/`[::1]:80` too — otherwise visiting the VM via the IP literal instead of `localhost` matches no
+    vhost and Caddy silently returns an empty `200 OK` (a blank page with no error anywhere).
   - Chromium is required at runtime for PDF generation (`PDF_GENERATOR=snappdf`, `SNAPPDF_CHROMIUM_PATH`) and is
     added to the PHP-FPM and data-setup services' `path`.
 

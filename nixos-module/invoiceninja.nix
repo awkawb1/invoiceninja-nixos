@@ -557,6 +557,14 @@ in
           cfg.proxy.caddyConfig
           {
             hostName = lib.mkForce proto_hostname;
+            # Caddy matches vhosts on the exact Host header, unlike nginx's single-vhost-is-default
+            # behavior. For local dev, accept requests to 127.0.0.1/[::1] too - otherwise visiting
+            # via the IP literal instead of "localhost" hits no vhost and gets an empty 200 response
+            # (a silent white screen, no error anywhere).
+            serverAliases = lib.mkIf (cfg.hostname == "localhost") [
+              "127.0.0.1:80"
+              "[::1]:80"
+            ];
             extraConfig = ''
               encode zstd gzip
               root ${invoiceninja}/public
