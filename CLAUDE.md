@@ -107,7 +107,11 @@ expect Nix to report the correct hash on a failed build (or use `nix-prefetch`/`
     It's added to `environment.systemPackages`, so it's the normal way to run artisan commands
     (`migrate`, `queue:work`, `ninja:create-account`, etc.) by hand on a deployed system.
   - Both `nginx` and `caddy` proxy backends are supported (`proxy.server`), each independently duplicating the
-    CORS headers and PHP-FPM passthrough config — if changing one, check whether the other needs the same change.
+    PHP-FPM passthrough config — if changing one, check whether the other needs the same change. Neither sets
+    CORS headers itself: Laravel's own CORS middleware already sends a complete set on every response, and an
+    earlier version of this module additionally set a second, static set of `Access-Control-*` headers at the
+    proxy level, which browsers reject as conflicting duplicates (server-to-server/curl checks don't notice,
+    since only browsers enforce CORS header validation).
   - Chromium is required at runtime for PDF generation (`PDF_GENERATOR=snappdf`, `SNAPPDF_CHROMIUM_PATH`) and is
     added to the PHP-FPM and data-setup services' `path`.
 

@@ -526,14 +526,6 @@ in
             if (!-e $request_filename) {
               rewrite ^(.+)$ /index.php?q= last;
             }
-
-            add_header 'Access-Control-Allow-Origin' '*';
-            add_header 'Access-Control-Allow-Methods' '*';
-            add_header 'Access-Control-Max-Age' 0;
-            add_header 'Content-Length' 0;
-            add_header 'Access-Control-Allow-Headers' 'X-API-COMPANY-KEY,X-API-SECRET,X-API-TOKEN,X-API-PASSWORD,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Disposition,Content-Type,Range,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE';
-            add_header 'Access-Control-Expose-Headers' 'X-APP-VERSION,X-MINIMUM-CLIENT-VERSION,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE';
-            add_header 'Access-Control-Allow-Credentials' false;
           '';
         }
         (lib.mkIf (cfg.hostname != "localhost") {
@@ -569,14 +561,6 @@ in
               encode zstd gzip
               root ${invoiceninja}/public
               php_fastcgi unix/${config.services.phpfpm.pools.invoiceninja.socket}
-              header {
-                Access-Control-Allow-Origin "*"
-                Access-Control-Allow-Methods "*"
-                Access-Control-Max-Age "0"
-                Access-Control-Allow-Headers "X-API-COMPANY-KEY,X-API-SECRET,X-API-TOKEN,X-API-PASSWORD,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Disposition,Content-Type,Range,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE"
-                Access-Control-Expose-Headers "X-APP-VERSION,X-MINIMUM-CLIENT-VERSION,X-CSRF-TOKEN,X-XSRF-TOKEN,X-LIVEWIRE"
-                Access-Control-Allow-Credentials false
-              }
               file_server
             '';
           }
