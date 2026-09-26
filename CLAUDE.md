@@ -39,7 +39,8 @@ This project uses `just` (see `justfile`) and Nix directly.
   and disables `boot.loader.grub` purely to satisfy NixOS's built-in assertions when `nix flake check` evaluates
   `config.system.build.toplevel` directly — the qemu-vm module overrides both with a tmpfs root and direct kernel
   boot when actually building `config.system.build.vm` (what `just build-vm` uses), so these values are otherwise
-  unused.
+  unused. Also raises `virtualisation.cores`/`memorySize` to 2/2560 (qemu-vm's defaults, 1 core/1024MB, are too
+  tight for real interactive use — see the module architecture notes below on PDF generation's memory cost).
 - `nixos-test.nix` — the automated test (`pkgs.testers.nixosTest`, exposed as `checks.<system>.invoiceninja` in
   `flake.nix`). Builds its own `pkgs` (with `allowUnfree` baked in — `nixosTest` forbids setting `nixpkgs.config`
   on a node once `pkgs` is externally supplied) and boots two nodes from `common.nix` — one with
@@ -126,7 +127,11 @@ expect Nix to report the correct hash on a failed build (or use `nix-prefetch`/`
     `127.0.0.1:80`/`[::1]:80` too — otherwise visiting the VM via the IP literal instead of `localhost` matches no
     vhost and Caddy silently returns an empty `200 OK` (a blank page with no error anywhere).
   - Chromium is required at runtime for PDF generation (`PDF_GENERATOR=snappdf`, `SNAPPDF_CHROMIUM_PATH`) and is
-    added to the PHP-FPM and data-setup services' `path`.
+    added to the PHP-FPM and data-setup services' `path`. Each PDF request launches a full chromium instance (not
+    a lightweight renderer), and PHP-FPM's default `pm.max_children = 8` means up to 8 of these can run
+    concurrently — on a memory-constrained deployment this can exhaust RAM (confirmed: even a couple of
+    concurrent PDF requests OOM-killed a 1024MB VM). Size deployments accordingly, or lower
+    `phpfpm.settings."pm.max_children"`.
 
 ### `flake.nix`
 
