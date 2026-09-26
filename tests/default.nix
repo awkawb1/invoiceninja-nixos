@@ -30,6 +30,15 @@
 
   services.resolved.enable = true;
 
+  # `just boot-vm` forwards the guest's port 80 to host port 8080 (QEMU_NET_OPTS in the justfile),
+  # but the backend builds absolute URLs (e.g. the stored company logo path) from APP_URL, which
+  # defaults to plain "http://localhost" with no port. The SPA's own relative URLs are fine (they
+  # inherit whatever port the browser is already on), but any backend-generated absolute URL then
+  # points at host port 80 - where nothing is listening - instead of the forwarded 8080, giving a
+  # silent net::ERR_CONNECTION_REFUSED for things like the logo image. Override to match the actual
+  # forwarded port.
+  services.invoiceninja.settings.APP_URL = "http://localhost:8080";
+
   # The qemu-vm module's defaults (1 core, 1024MB) are too tight for real interactive use: MySQL +
   # Redis + PHP-FPM + chromium (PDF generation, spawned per request - each is a full multi-process
   # browser, not a lightweight renderer) running concurrently can exhaust 1GB fast, and this VM
