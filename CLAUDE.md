@@ -48,9 +48,12 @@ This project uses `just` (see `justfile`) and Nix directly.
   against each node: waits for mysql/redis/phpfpm/queue-worker/proxy to be active, checks the
   `invoiceninja-data-setup` marker files (`.initial-migration`, `.db-seeded`, `.admin-created`) to confirm the
   one-time setup actually completed (not just that the oneshot unit exited), curls `/` for the app shell, exercises
-  the `invoiceninja-manage` wrapper, and logs in via `/api/v1/login` using the test admin credentials as an
-  end-to-end check that migrations/seeding/account creation all worked. This is the only automated test in the
-  repo — there is no separate unit-test suite.
+  the `invoiceninja-manage` wrapper, logs in via `/api/v1/login` using the test admin credentials as an
+  end-to-end check that migrations/seeding/account creation all worked, checks the full language list is
+  available (see the `cache:forget languages` note above), and exercises PDF generation end-to-end (POSTs to
+  `/api/v1/preview` with no entity, which falls back to a self-contained mock PDF built via the same
+  chromium/snappdf pipeline real invoices use, and checks for the `%PDF` magic bytes — no client/invoice setup
+  needed). This is the only automated test in the repo — there is no separate unit-test suite.
 
 ## Architecture
 

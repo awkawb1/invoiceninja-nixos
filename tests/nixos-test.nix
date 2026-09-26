@@ -80,6 +80,17 @@ pkgs.testers.nixosTest {
             language_count = len(json.loads(statics)["languages"])
             assert language_count > 40, f"expected ~45 languages, got {language_count}"
 
+        with subtest("PDF generation works (chromium/snappdf)"):
+            # /api/v1/preview with no entity falls back to a self-contained mock PDF (no invoice/client
+            # setup needed), exercising the same chromium/snappdf pipeline real invoice PDFs use.
+            machine.succeed(
+                "curl -sf -X POST http://localhost/api/v1/preview "
+                + f"-H 'X-API-TOKEN: {token}' -H 'Content-Type: application/json' "
+                + "-d '{}' -o /tmp/preview.pdf"
+            )
+            magic_bytes = machine.succeed("head -c 4 /tmp/preview.pdf")
+            assert magic_bytes == "%PDF", f"expected a PDF, got: {magic_bytes!r}"
+
 
     nginx.start()
     caddy.start()
