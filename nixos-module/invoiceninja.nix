@@ -623,6 +623,32 @@ in
       };
     };
 
+    systemd.services.invoiceninja-scheduler = {
+      description = "Invoice Ninja scheduled tasks (artisan schedule:run)";
+      after = [ "invoiceninja-data-setup.service" ];
+      requires = [ "phpfpm-invoiceninja.service" ];
+      # Ensure chromium is available, for any scheduled tasks that generate PDFs.
+      path = extraPrograms;
+
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${invoiceninja-manage}/bin/invoiceninja-manage schedule:run";
+        User = user;
+        Group = group;
+        StateDirectory = lib.mkIf (cfg.dataDir == "/var/lib/invoiceninja") "invoiceninja";
+      };
+    };
+
+    systemd.timers.invoiceninja-scheduler = {
+      description = "Run Invoice Ninja's scheduled tasks every minute";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "minutely";
+        Persistent = true;
+        Unit = "invoiceninja-scheduler.service";
+      };
+    };
+
     systemd.services.invoiceninja-data-setup = {
       description = "Invoice Ninja setup: migrations, environment file update, cache reload, data changes";
       wantedBy = [ "multi-user.target" ];

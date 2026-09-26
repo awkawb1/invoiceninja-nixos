@@ -52,6 +52,11 @@ pkgs.testers.nixosTest {
     with subtest("invoiceninja-manage wrapper can run artisan commands"):
         machine.succeed("invoiceninja-manage migrate:status")
 
+    with subtest("scheduler timer is enabled and schedule:run succeeds"):
+        # Without this, the app's dashboard reports "cron jobs are not enabled".
+        machine.succeed("systemctl is-active invoiceninja-scheduler.timer")
+        machine.succeed("systemctl start --wait invoiceninja-scheduler.service")
+
     with subtest("admin account can log in via the API"):
         login_response = machine.succeed(
             "curl -sf -X POST http://localhost/api/v1/login "

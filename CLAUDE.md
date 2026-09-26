@@ -92,6 +92,10 @@ expect Nix to report the correct hash on a failed build (or use `nix-prefetch`/`
     `app.php`, and guards one-time actions (`migrate`, `db:seed`, admin account creation) behind marker files
     (`.initial-migration`, `.db-seeded`, `.admin-created`) in `dataDir`. `phpfpm-invoiceninja.service` and
     `invoiceninja-queue-worker.service` both depend on it.
+  - `invoiceninja-scheduler.timer`/`.service` run `artisan schedule:run` every minute — this is what drives
+    Invoice Ninja's own internal cron-scheduled jobs (recurring invoices, scheduled reports, etc.); without it the
+    app's dashboard reports "cron jobs are not enabled". Laravel's scheduler is just a dispatcher, so this one
+    timer is sufficient regardless of how many scheduled tasks Invoice Ninja itself defines.
   - `invoiceninja-manage` is a generated wrapper script (`invoiceninja-manage <artisan-args>`) that `cd`s into the
     package output and runs `php artisan` as the configured service user (via `sudo` if invoked as another user).
     It's added to `environment.systemPackages`, so it's the normal way to run artisan commands
