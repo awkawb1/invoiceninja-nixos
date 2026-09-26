@@ -486,7 +486,6 @@ in
 
       recommendedTlsSettings = (if (cfg.hostname == "localhost") then false else true);
       recommendedGzipSettings = true;
-      recommendedProxySettings = true;
       recommendedOptimisation = true;
 
       clientMaxBodySize = cfg.maxUploadSize;
