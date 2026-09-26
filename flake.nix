@@ -20,9 +20,15 @@
       );
     in
     rec {
-      nixosConfigurations.test = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [ ./tests ];
+      nixosConfigurations = {
+        test-nginx = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [ (import ./tests/default.nix { proxyServer = "nginx"; }) ];
+        };
+        test-caddy = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [ (import ./tests/default.nix { proxyServer = "caddy"; }) ];
+        };
       };
 
       overlays.default = final: prev: { invoiceninja = final.callPackage ./package.nix { }; };

@@ -1,9 +1,10 @@
+{ proxyServer ? "nginx" }:
 { pkgs, modulesPath, ... }:
 
 {
   imports = [
     (modulesPath + "/profiles/qemu-guest.nix")
-    ./common.nix
+    (import ./common.nix { inherit proxyServer; })
   ];
 
   # Required to build pkgs.chromium, which the module pulls in for PDF generation.

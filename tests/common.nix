@@ -1,3 +1,4 @@
+{ proxyServer ? "nginx" }:
 { ... }:
 
 {
@@ -5,7 +6,7 @@
 
   services.invoiceninja = {
     enable = true;
-    proxy.server = "nginx";
+    proxy.server = proxyServer;
     adminAccount.passwordFile = ./invoice_ninja_test_password;
     secretFile = ./test.env;
     settings.APP_DEBUG = true;

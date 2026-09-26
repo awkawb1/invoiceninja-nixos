@@ -15,54 +15,61 @@ in
 pkgs.testers.nixosTest {
   name = "invoiceninja";
 
-  nodes.machine = {
-    imports = [ ./common.nix ];
+  nodes = {
+    nginx.imports = [ (import ./common.nix { proxyServer = "nginx"; }) ];
+    caddy.imports = [ (import ./common.nix { proxyServer = "caddy"; }) ];
   };
 
   testScript = ''
-    machine.start()
+    def check_invoiceninja(machine, proxy_unit):
+        machine.wait_for_unit("mysql.service")
+        machine.wait_for_unit("redis-invoiceninja.service")
+        machine.wait_for_unit("phpfpm-invoiceninja.service")
+        machine.wait_for_unit("invoiceninja-queue-worker.service")
+        machine.wait_for_unit(proxy_unit)
+        machine.wait_for_open_port(80)
 
-    machine.wait_for_unit("mysql.service")
-    machine.wait_for_unit("redis-invoiceninja.service")
-    machine.wait_for_unit("phpfpm-invoiceninja.service")
-    machine.wait_for_unit("invoiceninja-queue-worker.service")
-    machine.wait_for_unit("nginx.service")
-    machine.wait_for_open_port(80)
+        # phpfpm-invoiceninja/invoiceninja-queue-worker both Require= invoiceninja-data-setup,
+        # so systemd already waited for it to finish above. Confirm the one-time setup steps
+        # it guards actually completed, rather than just that the unit exited.
+        with subtest("one-time setup (migrate, seed, admin account) completed"):
+            machine.succeed("test -f /var/lib/invoiceninja/.initial-migration")
+            machine.succeed("test -f /var/lib/invoiceninja/.db-seeded")
+            machine.succeed("test -f /var/lib/invoiceninja/.admin-created")
 
-    # phpfpm-invoiceninja/invoiceninja-queue-worker both Require= invoiceninja-data-setup,
-    # so systemd already waited for it to finish above. Confirm the one-time setup steps
-    # it guards actually completed, rather than just that the unit exited.
-    with subtest("one-time setup (migrate, seed, admin account) completed"):
-        machine.succeed("test -f /var/lib/invoiceninja/.initial-migration")
-        machine.succeed("test -f /var/lib/invoiceninja/.db-seeded")
-        machine.succeed("test -f /var/lib/invoiceninja/.admin-created")
+        with subtest("application shell is served over HTTP"):
+            response = machine.succeed("curl -sf http://localhost/")
+            assert "Invoice Ninja" in response, f"unexpected response from /: {response}"
 
-    with subtest("application shell is served over HTTP"):
-        response = machine.succeed("curl -sf http://localhost/")
-        assert "Invoice Ninja" in response, f"unexpected response from /: {response}"
+        with subtest("web UI login page is served"):
+            # The UI is a client-side-routed React SPA, so curl (no JS) only sees the same
+            # index.html shell as "/" - this confirms the proxy/Laravel resolve the /login route
+            # to that shell instead of 404ing, which is what a browser needs before it can
+            # render the actual login form.
+            login_page = machine.succeed("curl -sf http://localhost/login")
+            assert "Invoice Ninja" in login_page, f"unexpected response from /login: {login_page}"
 
-    with subtest("web UI login page is served"):
-        # The UI is a client-side-routed React SPA, so curl (no JS) only sees the same
-        # index.html shell as "/" - this confirms nginx/Laravel resolve the /login route
-        # to that shell instead of 404ing, which is what a browser needs before it can
-        # render the actual login form.
-        login_page = machine.succeed("curl -sf http://localhost/login")
-        assert "Invoice Ninja" in login_page, f"unexpected response from /login: {login_page}"
+        with subtest("invoiceninja-manage wrapper can run artisan commands"):
+            machine.succeed("invoiceninja-manage migrate:status")
 
-    with subtest("invoiceninja-manage wrapper can run artisan commands"):
-        machine.succeed("invoiceninja-manage migrate:status")
+        with subtest("scheduler timer is enabled and schedule:run succeeds"):
+            # Without this, the app's dashboard reports "cron jobs are not enabled".
+            machine.succeed("systemctl is-active invoiceninja-scheduler.timer")
+            machine.succeed("systemctl start --wait invoiceninja-scheduler.service")
 
-    with subtest("scheduler timer is enabled and schedule:run succeeds"):
-        # Without this, the app's dashboard reports "cron jobs are not enabled".
-        machine.succeed("systemctl is-active invoiceninja-scheduler.timer")
-        machine.succeed("systemctl start --wait invoiceninja-scheduler.service")
+        with subtest("admin account can log in via the API"):
+            login_response = machine.succeed(
+                "curl -sf -X POST http://localhost/api/v1/login "
+                + "-H 'Content-Type: application/json' "
+                + "-d '{\"email\":\"${adminEmail}\",\"password\":\"${adminPassword}\"}'"
+            )
+            assert "${adminEmail}" in login_response, f"login did not succeed: {login_response}"
 
-    with subtest("admin account can log in via the API"):
-        login_response = machine.succeed(
-            "curl -sf -X POST http://localhost/api/v1/login "
-            + "-H 'Content-Type: application/json' "
-            + "-d '{\"email\":\"${adminEmail}\",\"password\":\"${adminPassword}\"}'"
-        )
-        assert "${adminEmail}" in login_response, f"login did not succeed: {login_response}"
+
+    nginx.start()
+    caddy.start()
+
+    check_invoiceninja(nginx, "nginx.service")
+    check_invoiceninja(caddy, "caddy.service")
   '';
 }

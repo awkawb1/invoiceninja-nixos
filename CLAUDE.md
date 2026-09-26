@@ -16,7 +16,8 @@ editing Nix expressions.
 
 This project uses `just` (see `justfile`) and Nix directly.
 
-- `just build-vm` — cleans previous artifacts and builds the test VM (`nixosConfigurations.test`) via `nom build`.
+- `just build-vm [proxy]` — cleans previous artifacts and builds the test VM (`nixosConfigurations.test-<proxy>`)
+  via `nom build`. `proxy` is `nginx` (default) or `caddy`.
 - `just boot-vm` — boots the built VM (`result/bin/run-nixos-vm`) in the current terminal. Serves Invoice Ninja on
   `localhost:8080` (see `QEMU_NET_OPTS` in the `justfile`) with root login `toor`.
 - `just clean` — removes `result`/`nixos.qcow2` and kills any running `qemu` process.
@@ -28,10 +29,12 @@ This project uses `just` (see `justfile`) and Nix directly.
 ### `tests/`
 
 - `common.nix` — the shared `services.invoiceninja` config used by both the interactive VM and the automated test:
-  imports the module, enables nginx, and points at the checked-in test fixtures (`invoice_ninja_test_password`,
-  `test.env`).
-- `default.nix` — the interactive VM config (`nixosConfigurations.test` in `flake.nix`), used for manual,
-  click-around verification via `just build-vm` / `just boot-vm`. Adds the qemu-guest profile, a root login, and
+  imports the module and points at the checked-in test fixtures (`invoice_ninja_test_password`, `test.env`). It's a
+  function taking `{ proxyServer ? "nginx" }` so callers can pick which proxy backend to test.
+- `default.nix` — the interactive VM config (`nixosConfigurations.test-nginx`/`test-caddy` in `flake.nix`), used
+  for manual, click-around verification via `just build-vm [proxy]` / `just boot-vm`. It's also a function taking
+  `{ proxyServer ? "nginx" }`, forwarded straight through to `common.nix`, so `flake.nix` can instantiate one
+  `nixosConfigurations` entry per proxy backend. Adds the qemu-guest profile, a root login, and
   `nixpkgs.config.allowUnfree = true` (required to build `pkgs.chromium`). It also sets a dummy `fileSystems."/"`
   and disables `boot.loader.grub` purely to satisfy NixOS's built-in assertions when `nix flake check` evaluates
   `config.system.build.toplevel` directly — the qemu-vm module overrides both with a tmpfs root and direct kernel
@@ -39,12 +42,15 @@ This project uses `just` (see `justfile`) and Nix directly.
   unused.
 - `nixos-test.nix` — the automated test (`pkgs.testers.nixosTest`, exposed as `checks.<system>.invoiceninja` in
   `flake.nix`). Builds its own `pkgs` (with `allowUnfree` baked in — `nixosTest` forbids setting `nixpkgs.config`
-  on a node once `pkgs` is externally supplied) and boots a VM with `common.nix`, then: waits for
-  mysql/redis/phpfpm/queue-worker/nginx to be active, checks the `invoiceninja-data-setup` marker files
-  (`.initial-migration`, `.db-seeded`, `.admin-created`) to confirm the one-time setup actually completed (not just
-  that the oneshot unit exited), curls `/` for the app shell, exercises the `invoiceninja-manage` wrapper, and logs
-  in via `/api/v1/login` using the test admin credentials as an end-to-end check that migrations/seeding/account
-  creation all worked. This is the only automated test in the repo — there is no separate unit-test suite.
+  on a node once `pkgs` is externally supplied) and boots two nodes from `common.nix` — one with
+  `proxyServer = "nginx"`, one with `proxyServer = "caddy"` — so both proxy backends get exercised. The shared
+  assertion suite (factored into a `check_invoiceninja(machine, proxy_unit)` function in the test script) runs
+  against each node: waits for mysql/redis/phpfpm/queue-worker/proxy to be active, checks the
+  `invoiceninja-data-setup` marker files (`.initial-migration`, `.db-seeded`, `.admin-created`) to confirm the
+  one-time setup actually completed (not just that the oneshot unit exited), curls `/` for the app shell, exercises
+  the `invoiceninja-manage` wrapper, and logs in via `/api/v1/login` using the test admin credentials as an
+  end-to-end check that migrations/seeding/account creation all worked. This is the only automated test in the
+  repo — there is no separate unit-test suite.
 
 ## Architecture
 
@@ -108,8 +114,9 @@ expect Nix to report the correct hash on a failed build (or use `nix-prefetch`/`
 ### `flake.nix`
 
 Standard flake shape: `overlays.default` registers the package, `packages.<system>.invoiceninja` exposes it,
-`nixosModules` re-exports `nixos-module/default.nix`, and `nixosConfigurations.test` builds the VM defined in
-`tests/`. Only `x86_64-linux` is currently supported.
+`nixosModules` re-exports `nixos-module/default.nix`, and `nixosConfigurations.test-nginx`/`test-caddy` each build
+the VM defined in `tests/default.nix` with the corresponding `proxyServer`. Only `x86_64-linux` is currently
+supported.
 
 ## Conventions
 

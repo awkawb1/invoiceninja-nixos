@@ -18,10 +18,10 @@ clean:
     pkill qemu
     exit 0
 
-[doc('Build virtual machine for testing')]
+[doc('Build virtual machine for testing (proxy: nginx or caddy)')]
 [group('main')]
-build-vm: clean
-    nom build ".#nixosConfigurations.test.config.system.build.vm"
+build-vm proxy="nginx": clean
+    nom build ".#nixosConfigurations.test-{{proxy}}.config.system.build.vm"
 
 [doc('Run virtual machine in current terminal')]
 [group('main')]
