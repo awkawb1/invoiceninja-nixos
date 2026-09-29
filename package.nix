@@ -1,4 +1,5 @@
-{ buildNpmPackage
+{ lib
+, buildNpmPackage
 , npmHooks
 , fetchFromGitHub
 , fetchNpmDeps
@@ -12,13 +13,13 @@
 let
   pname = "invoiceninja";
 
-  version = "5.13.19";
+  version = "5.13.43";
   src = fetchFromGitHub {
     name = "${pname}";
     owner = pname;
     repo = pname;
     rev = "v${version}";
-    hash = "sha256-pvZNTiGGX6OqOEqcDrDqqpLD1Ohc/TA4nIRjm2jEp74=";
+    hash = "sha256-F8lEyVi2EFRnkxWSDRIqsqrKmtCEUEee8lDDUZXoo0c=";
 
     postFetch = ''
       # add missing integrity fields to lockfile
@@ -26,13 +27,13 @@ let
     '';
   };
 
-  uiVersion = "03.05.2026.1";
+  uiVersion = "28.09.2026.1";
   uiSrc = fetchFromGitHub {
     name = "${pname}-ui";
     owner = pname;
     repo = "ui";
     tag = uiVersion;
-    hash = "sha256-BTaWNHTE+9NvavUYs56DdJHmqXy36N5k/crj3rU2Npg=";
+    hash = "sha256-RLirh0Q5lhH2O7AEwoR4MdlELAgB00f9w6FfiBNhoho=";
 
     postFetch = ''
       # add missing integrity fields to lockfile
@@ -48,7 +49,7 @@ let
 
     nodejs = nodejs_22;
   
-    npmDepsHash = "sha256-JA5TfXeg7iHVjQdjeU6SSD2JFSLISad8hPowaR1roQw=";
+    npmDepsHash = "sha256-7Boz+o4pQkPNMJREWgUMeKQa7avChqd+GpZoaXO0LqE=";
 
     preConfigure = ''
       sed -i 's/VITE_IS_TEST=true/VITE_IS_TEST=false/' .env.example
@@ -78,7 +79,7 @@ php82.buildComposerProject (finalAttrs: {
     npmHooks.npmBuildHook
   ];
 
-  vendorHash = "sha256-2CyWKlyCyoCt/WdY7Ta0oEXW2KIkGwhilHtzpBJ5Wnk=";
+  vendorHash = "sha256-zTo+unMIsv2XObjwiFpxTdUxVfZoXbMNviDrLMVMJI0=";
 
   # Upstream composer.json has invalid license, webpatser/laravel-countries package is pointing
   # to commit-ref, and php required in require and require-dev
@@ -89,7 +90,7 @@ php82.buildComposerProject (finalAttrs: {
   npmDeps = fetchNpmDeps {
     name = "${pname}-${version}-npm-deps";
     inherit src;
-    hash = "sha256-WCadsQVj9eusYWJEOaEp5DIkVcbmPFGe6bmKi9NZDDg=";
+    hash = "sha256-uHbvhf8EWOBiyPQ9ieA4ynIUkIXWJEXZ7ZVsr4NXWtU=";
   };
 
   preConfigure = ''
