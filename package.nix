@@ -3,6 +3,7 @@
 , npmHooks
 , fetchFromGitHub
 , fetchNpmDeps
+, jq
 , php82
 , nodejs_22
 , npm-lockfile-fix
@@ -74,6 +75,7 @@ php82.buildComposerProject (finalAttrs: {
   pname = "${pname}-composer";
 
   nativeBuildInputs = [
+    jq
     nodejs_22
     npmHooks.npmConfigHook
     npmHooks.npmBuildHook
@@ -103,6 +105,17 @@ php82.buildComposerProject (finalAttrs: {
 
     # Remove JS/CSS build artifacts
     rm -rf $out/node_modules
+
+    # composer.lock and vendor/composer/installed.json record each package's "dist.url" as the
+    # store path of the composer-repository mirror it was installed from, which otherwise drags
+    # that whole (500+MB) fixed-output derivation into the runtime closure for no reason -- it's
+    # provenance metadata, not something Laravel's package manifest (which only reads
+    # name/extra) or Composer\InstalledVersions (which reads vendor/composer/installed.php, not
+    # this file) consult at runtime.
+    jq '(.packages[]?.dist.url) |= "removed"' $out/vendor/composer/installed.json > $out/vendor/composer/installed.json.tmp
+    mv $out/vendor/composer/installed.json.tmp $out/vendor/composer/installed.json
+    jq '(.packages[]?.dist.url, .["packages-dev"][]?.dist.url) |= "removed"' $out/composer.lock > $out/composer.lock.tmp
+    mv $out/composer.lock.tmp $out/composer.lock
 
     rm -r $out/bootstrap/cache
     rm -rf $out/public/storage
