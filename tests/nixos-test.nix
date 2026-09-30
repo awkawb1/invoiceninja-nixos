@@ -23,6 +23,18 @@ pkgs.testers.nixosTest {
   testScript = ''
     import json
 
+    def api_get(machine, path, token):
+        return json.loads(machine.succeed(f"curl -sf http://localhost{path} -H 'X-API-TOKEN: {token}'"))
+
+    def api_post(machine, path, payload, token=None):
+        auth_header = f"-H 'X-API-TOKEN: {token}' " if token else ""
+        return json.loads(machine.succeed(
+            f"curl -sf -X POST http://localhost{path} "
+            + auth_header
+            + "-H 'Content-Type: application/json' "
+            + f"-d '{json.dumps(payload)}'"
+        ))
+
     def check_invoiceninja(machine, proxy_unit):
         machine.wait_for_unit("mysql.service")
         machine.wait_for_unit("redis-invoiceninja.service")
@@ -60,12 +72,9 @@ pkgs.testers.nixosTest {
             machine.succeed("systemctl start --wait invoiceninja-scheduler.service")
 
         with subtest("admin account can log in via the API"):
-            login_response = machine.succeed(
-                "curl -sf -X POST http://localhost/api/v1/login "
-                + "-H 'Content-Type: application/json' "
-                + "-d '{\"email\":\"${adminEmail}\",\"password\":\"${adminPassword}\"}'"
-            )
-            assert "${adminEmail}" in login_response, f"login did not succeed: {login_response}"
+            login_response = api_post(machine, "/api/v1/login", {"email": "${adminEmail}", "password": "${adminPassword}"})
+            assert "${adminEmail}" in json.dumps(login_response), f"login did not succeed: {login_response}"
+            token = login_response["data"][0]["token"]["token"]
 
         with subtest("full language list is available, not just the af/ca/id migration's 3"):
             # Regression check: migration 2025_08_31_224356_additional_languages_af_ca_id.php runs
@@ -73,16 +82,15 @@ pkgs.testers.nixosTest {
             # does Cache::forever('languages', Language::all()) - permanently caching just the 3
             # languages it sees at that moment. invoiceninja-data-setup works around this with
             # `invoiceninja-manage cache:forget languages`; this confirms the workaround is in place.
-            token = json.loads(login_response)["data"][0]["token"]["token"]
-            statics = machine.succeed(
-                f"curl -sf http://localhost/api/v1/statics -H 'X-API-TOKEN: {token}'"
-            )
-            language_count = len(json.loads(statics)["languages"])
+            language_count = len(api_get(machine, "/api/v1/statics", token)["languages"])
             assert language_count > 40, f"expected ~45 languages, got {language_count}"
 
         with subtest("PDF generation works (chromium/snappdf)"):
             # /api/v1/preview with no entity falls back to a self-contained mock PDF (no invoice/client
             # setup needed), exercising the same chromium/snappdf pipeline real invoice PDFs use.
+            # This fallback only triggers when the company has no invoices/invitations at all yet
+            # (PreviewController::blankEntity), so this must run before the client/invoice/payment
+            # subtest below creates one.
             machine.succeed(
                 "curl -sf -X POST http://localhost/api/v1/preview "
                 + f"-H 'X-API-TOKEN: {token}' -H 'Content-Type: application/json' "
@@ -90,6 +98,33 @@ pkgs.testers.nixosTest {
             )
             magic_bytes = machine.succeed("head -c 4 /tmp/preview.pdf")
             assert magic_bytes == "%PDF", f"expected a PDF, got: {magic_bytes!r}"
+
+        with subtest("a client can be created, invoiced, and pay that invoice in full"):
+            client = api_post(machine, "/api/v1/clients", {"name": "Test Client"}, token)["data"]
+
+            invoice = api_post(machine, "/api/v1/invoices", {
+                "client_id": client["id"],
+                "line_items": [
+                    {"quantity": 1, "cost": 100, "product_key": "test-product", "notes": "test line item"},
+                ],
+            }, token)["data"]
+            assert invoice["amount"] == 100, f"unexpected invoice amount: {invoice}"
+
+            # Mirrors the normal workflow of sending an invoice to a client before it's paid,
+            # rather than relying on the fact that draft invoices also happen to be payable.
+            api_get(machine, f"/api/v1/invoices/{invoice['id']}/mark_sent", token)
+
+            payment = api_post(machine, "/api/v1/payments", {
+                "client_id": client["id"],
+                "amount": invoice["amount"],
+                "invoices": [{"invoice_id": invoice["id"], "amount": invoice["amount"]}],
+            }, token)["data"]
+            assert payment["applied"] == invoice["amount"], f"payment not fully applied: {payment}"
+
+            paid_invoice = api_get(machine, f"/api/v1/invoices/{invoice['id']}", token)["data"]
+            # status_id 4 == STATUS_PAID
+            assert paid_invoice["status_id"] == "4", f"invoice not marked paid: {paid_invoice}"
+            assert paid_invoice["balance"] == 0, f"invoice balance not zero: {paid_invoice}"
 
 
     nginx.start()
