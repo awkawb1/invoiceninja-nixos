@@ -47,8 +47,22 @@ let
     extraConfig = "memory_limit = 1024M";
   };
 
-  # Chromium is required for PDF invoice generation
-  chromium = pkgs.chromium;
+  # A headless browser is required for PDF invoice generation (PDF_GENERATOR=snappdf). snappdf
+  # just shells out to `$SNAPPDF_CHROMIUM_PATH --headless --print-to-pdf=... <url>`, so a full
+  # browser UI/GPU stack isn't needed -- Google's own "Chrome for Testing" headless-only build
+  # (as packaged by nixpkgs' playwright-driver) does the same job for a ~1.45GB smaller closure
+  # than pkgs.chromium, with no allowUnfree requirement.
+  chromiumHeadlessShellBrowsers = pkgs.playwright-driver.browsers.override {
+    withChromium = false;
+    withFirefox = false;
+    withWebkit = false;
+    withFfmpeg = false;
+    withChromiumHeadlessShell = true;
+  };
+  chromium = pkgs.runCommand "chromium-headless-shell" { } ''
+    mkdir -p $out/bin
+    ln -s ${chromiumHeadlessShellBrowsers}/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell $out/bin/chromium
+  '';
   extraPrograms = [ chromium ];
 
   # Management script

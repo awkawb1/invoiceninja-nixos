@@ -1,13 +1,7 @@
 { nixpkgsPath, system }:
 
 let
-  # nixosTest forbids setting `nixpkgs.config` on a node once `pkgs` is externally supplied,
-  # so allowUnfree (required to build pkgs.chromium) has to be baked into this pkgs instance
-  # up front rather than set from within common.nix like the interactive VM does.
-  pkgs = import nixpkgsPath {
-    inherit system;
-    config.allowUnfree = true;
-  };
+  pkgs = import nixpkgsPath { inherit system; };
 
   adminEmail = "admin@email.com";
   adminPassword = pkgs.lib.strings.trim (builtins.readFile ./invoice_ninja_test_password);

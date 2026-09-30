@@ -34,17 +34,17 @@ This project uses `just` (see `justfile`) and Nix directly.
 - `default.nix` — the interactive VM config (`nixosConfigurations.test-nginx`/`test-caddy` in `flake.nix`), used
   for manual, click-around verification via `just build-vm [proxy]` / `just boot-vm`. It's also a function taking
   `{ proxyServer ? "nginx" }`, forwarded straight through to `common.nix`, so `flake.nix` can instantiate one
-  `nixosConfigurations` entry per proxy backend. Adds the qemu-guest profile, a root login, and
-  `nixpkgs.config.allowUnfree = true` (required to build `pkgs.chromium`). It also sets a dummy `fileSystems."/"`
-  and disables `boot.loader.grub` purely to satisfy NixOS's built-in assertions when `nix flake check` evaluates
+  `nixosConfigurations` entry per proxy backend. Adds the qemu-guest profile and a root login. It also sets a
+  dummy `fileSystems."/"` and disables `boot.loader.grub` purely to satisfy NixOS's built-in assertions when
+  `nix flake check` evaluates
   `config.system.build.toplevel` directly — the qemu-vm module overrides both with a tmpfs root and direct kernel
   boot when actually building `config.system.build.vm` (what `just build-vm` uses), so these values are otherwise
   unused. Also raises `virtualisation.cores`/`memorySize` to 2/2560 (qemu-vm's defaults, 1 core/1024MB, are too
   tight for real interactive use — see the module architecture notes below on PDF generation's memory cost).
 - `nixos-test.nix` — the automated test (`pkgs.testers.nixosTest`, exposed as `checks.<system>.invoiceninja` in
-  `flake.nix`). Builds its own `pkgs` (with `allowUnfree` baked in — `nixosTest` forbids setting `nixpkgs.config`
-  on a node once `pkgs` is externally supplied) and boots two nodes from `common.nix` — one with
-  `proxyServer = "nginx"`, one with `proxyServer = "caddy"` — so both proxy backends get exercised. The shared
+  `flake.nix`). Builds its own `pkgs` externally (needed regardless of config, since `nixosTest` itself is called
+  as `pkgs.testers.nixosTest`) and boots two nodes from `common.nix` — one with `proxyServer = "nginx"`, one with
+  `proxyServer = "caddy"` — so both proxy backends get exercised. The shared
   assertion suite (factored into a `check_invoiceninja(machine, proxy_unit)` function in the test script) runs
   against each node: waits for mysql/redis/phpfpm/queue-worker/proxy to be active, checks the
   `invoiceninja-data-setup` marker files (`.initial-migration`, `.db-seeded`, `.admin-created`) to confirm the
@@ -126,12 +126,17 @@ expect Nix to report the correct hash on a failed build (or use `nix-prefetch`/`
     regardless of `Host`). When `hostname == "localhost"`, the caddy vhost adds `serverAliases` for
     `127.0.0.1:80`/`[::1]:80` too — otherwise visiting the VM via the IP literal instead of `localhost` matches no
     vhost and Caddy silently returns an empty `200 OK` (a blank page with no error anywhere).
-  - Chromium is required at runtime for PDF generation (`PDF_GENERATOR=snappdf`, `SNAPPDF_CHROMIUM_PATH`) and is
-    added to the PHP-FPM and data-setup services' `path`. Each PDF request launches a full chromium instance (not
-    a lightweight renderer), and PHP-FPM's default `pm.max_children = 8` means up to 8 of these can run
-    concurrently — on a memory-constrained deployment this can exhaust RAM (confirmed: even a couple of
-    concurrent PDF requests OOM-killed a 1024MB VM). Size deployments accordingly, or lower
-    `phpfpm.settings."pm.max_children"`.
+  - A headless browser is required at runtime for PDF generation (`PDF_GENERATOR=snappdf`,
+    `SNAPPDF_CHROMIUM_PATH`) and is added to the PHP-FPM and data-setup services' `path`. This is
+    `nixpkgs.playwright-driver`'s `chromium-headless-shell` component (Google's official "Chrome for Testing"
+    headless-only build, selected via `playwright-driver.browsers.override { ... }` with every other
+    browser/ffmpeg disabled) rather than `pkgs.chromium` — snappdf only ever shells out to
+    `$SNAPPDF_CHROMIUM_PATH --headless --print-to-pdf=...`, so the full browser UI/GPU stack `pkgs.chromium` ships
+    is dead weight; the headless-shell closure is ~1.45GB smaller and needs no `allowUnfree`. Each PDF request
+    still launches a full instance of the underlying browser engine (not a lightweight renderer), and PHP-FPM's
+    default `pm.max_children = 8` means up to 8 of these can run concurrently — on a memory-constrained deployment
+    this can exhaust RAM (confirmed: even a couple of concurrent PDF requests OOM-killed a 1024MB VM). Size
+    deployments accordingly, or lower `phpfpm.settings."pm.max_children"`.
 
 ### `flake.nix`
 
