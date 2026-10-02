@@ -39,9 +39,10 @@ pkgs.testers.nixosTest {
 
         # phpfpm-invoiceninja/invoiceninja-queue-worker both Require= invoiceninja-data-setup,
         # so systemd already waited for it to finish above. Confirm the one-time setup steps
-        # it guards actually completed, rather than just that the unit exited.
-        with subtest("one-time setup (migrate, seed, admin account) completed"):
-            machine.succeed("test -f /var/lib/invoiceninja/.initial-migration")
+        # it guards actually completed, rather than just that the unit exited. (Migrations run
+        # unconditionally on every activation rather than being marker-gated, so there's no
+        # marker file to check for them here.)
+        with subtest("one-time setup (seed, admin account) completed"):
             machine.succeed("test -f /var/lib/invoiceninja/.db-seeded")
             machine.succeed("test -f /var/lib/invoiceninja/.admin-created")
 

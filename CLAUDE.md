@@ -47,7 +47,7 @@ This project uses `just` (see `justfile`) and Nix directly.
   `proxyServer = "caddy"` — so both proxy backends get exercised. The shared
   assertion suite (factored into a `check_invoiceninja(machine, proxy_unit)` function in the test script) runs
   against each node: waits for mysql/redis/phpfpm/queue-worker/proxy to be active, checks the
-  `invoiceninja-data-setup` marker files (`.initial-migration`, `.db-seeded`, `.admin-created`) to confirm the
+  `invoiceninja-data-setup` marker files (`.db-seeded`, `.admin-created`) to confirm the
   one-time setup actually completed (not just that the oneshot unit exited), curls `/` for the app shell, exercises
   the `invoiceninja-manage` wrapper, logs in via `/api/v1/login` using the test admin credentials as an
   end-to-end check that migrations/seeding/account creation all worked, checks the full language list is
@@ -99,8 +99,11 @@ expect Nix to report the correct hash on a failed build (or use `nix-prefetch`/`
     contents directly on disk in `dataDir`.
   - `invoiceninja-data-setup.service` (oneshot, runs on every activation) does all first-run and idempotent setup:
     clears bootstrap/opcode cache, rebuilds `.env`, rsyncs static storage into `dataDir`, symlinks the runtime
-    `app.php`, and guards one-time actions (`migrate`, `db:seed`, admin account creation) behind marker files
-    (`.initial-migration`, `.db-seeded`, `.admin-created`) in `dataDir`. `phpfpm-invoiceninja.service` and
+    `app.php`, runs `migrate --force` unconditionally on every activation (safe/idempotent — Laravel tracks
+    applied migrations in the DB and only runs new ones; this must NOT be marker-gated, since a later invoiceninja
+    version upgrade can ship new migrations that need to run on an already-migrated install), and guards the
+    remaining one-time actions (`db:seed`, admin account creation) behind marker files (`.db-seeded`,
+    `.admin-created`) in `dataDir`. `phpfpm-invoiceninja.service` and
     `invoiceninja-queue-worker.service` both depend on it. It also unconditionally runs
     `invoiceninja-manage cache:forget languages` on every activation, working around an upstream bug: migration
     `2025_08_31_224356_additional_languages_af_ca_id.php` runs during `migrate` (before `db:seed`'s

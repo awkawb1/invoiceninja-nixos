@@ -702,8 +702,11 @@ in
         # We cannot link the cache folder only because bootstrap folder needs to be writeable.
         ln -sf ${invoiceninja}/bootstrap-static/app.php ${cfg.runtimeDir}/app.php
 
-        # Perform the first migration
-        [[ ! -f ${cfg.dataDir}/.initial-migration ]] && invoiceninja-manage migrate --force && touch ${cfg.dataDir}/.initial-migration
+        # Run migrations on every activation, not just the first: `migrate` is idempotent
+        # (Laravel tracks applied migrations in the DB and only runs new ones), and gating this
+        # behind a marker file meant migrations shipped by a later invoiceninja version upgrade
+        # would never run.
+        invoiceninja-manage migrate --force
 
         # Seed database with records
         # Necessary for languages, currencies, countries, etc.
