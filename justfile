@@ -36,11 +36,17 @@ boot-vm:
 test:
     nix flake check -L
 
+[doc('Update invoiceninja and ui to their latest upstream versions, recomputing hashes')]
+[group('maintenance')]
+update:
+    ./scripts/update-versions.sh
+
 [doc('Build the package and automated test, then push results to the invoiceninja-nixos cachix cache')]
 [group('maintenance')]
 push-cache:
     nix build --print-out-paths --no-link \
         ".#invoiceninja" \
+        ".#invoiceninja.ui" \
         ".#checks.x86_64-linux.invoiceninja" \
         | cachix push invoiceninja-nixos
 
