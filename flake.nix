@@ -1,6 +1,13 @@
 {
   description = "An Invoice Ninja package and module.";
 
+  nixConfig = {
+    extra-substituters = [ "https://invoiceninja-nixos.cachix.org" ];
+    extra-trusted-public-keys = [
+      "invoiceninja-nixos.cachix.org-1:TmRZaji8FFVjjIw9KZmvLrxMxfP+JDThOyOX04z526A="
+    ];
+  };
+
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
   outputs =

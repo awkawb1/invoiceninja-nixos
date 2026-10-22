@@ -36,3 +36,11 @@ boot-vm:
 test:
     nix flake check -L
 
+[doc('Build the package and automated test, then push results to the invoiceninja-nixos cachix cache')]
+[group('maintenance')]
+push-cache:
+    nix build --print-out-paths --no-link \
+        ".#invoiceninja" \
+        ".#checks.x86_64-linux.invoiceninja" \
+        | cachix push invoiceninja-nixos
+

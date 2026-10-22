@@ -74,6 +74,8 @@ php82.buildComposerProject (finalAttrs: {
   inherit src version;
   pname = "${pname}-composer";
 
+  passthru.ui = ui;
+
   nativeBuildInputs = [
     jq
     nodejs_22
