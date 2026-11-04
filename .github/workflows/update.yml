@@ -1,0 +1,44 @@
+name: Update versions
+
+on:
+  schedule:
+    # 06:00 UTC every Monday
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: invoiceninja-nixos
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Bump invoiceninja/ui to latest upstream versions
+        run: ./scripts/update-versions.sh
+
+      - name: Build and run the full NixOS test
+        run: nix build ".#checks.x86_64-linux.invoiceninja" -L
+
+      - name: Push bump commit to the canonical Gitea repo
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          if git diff --quiet -- package.nix; then
+            echo "No version change; nothing to commit."
+            exit 0
+          fi
+
+          main_version=$(grep -m1 -E '^\s*version = "' package.nix | sed -E 's/.*"([^"]+)".*/\1/')
+          ui_version=$(grep -m1 -E '^\s*uiVersion = "' package.nix | sed -E 's/.*"([^"]+)".*/\1/')
+
+          git config user.name "invoiceninja-nixos CI"
+          git config user.email "invoiceninja-nixos-ci@users.noreply.github.com"
+          git add package.nix
+          git commit -m "package.nix: update invoiceninja to v${main_version}, ui to ${ui_version}"
+          git push "https://oauth2:${GITEA_TOKEN}@gitea.awkawb.cloud/awkawb/invoiceninja-nixos.git" HEAD:master
