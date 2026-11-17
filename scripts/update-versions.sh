@@ -51,7 +51,7 @@ current_ui_version=$(grep -m1 -E '^\s*uiVersion = "' "$pkg" | sed -E 's/.*"([^"]
 
 echo "Current: invoiceninja=$current_main_version ui=$current_ui_version"
 
-latest_main_version=$(curl -sf https://api.github.com/repos/invoiceninja/invoiceninja/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+latest_main_version=$(curl -sfL https://api.github.com/repos/invoiceninja/invoiceninja/releases/latest | jq -r '.tag_name' | sed 's/^v//')
 
 # invoiceninja/ui has no GitHub Releases, just date-stamped tags
 # (DD.MM.YYYY.N) -- paginate through all tags and pick the newest by
@@ -60,7 +60,7 @@ latest_main_version=$(curl -sf https://api.github.com/repos/invoiceninja/invoice
 ui_tags=""
 page=1
 while :; do
-  batch=$(curl -sf "https://api.github.com/repos/invoiceninja/ui/tags?per_page=100&page=${page}" | jq -r '.[].name')
+  batch=$(curl -sfL "https://api.github.com/repos/invoiceninja/ui/tags?per_page=100&page=${page}" | jq -r '.[].name')
   [ -z "$batch" ] && break
   ui_tags="${ui_tags}
 ${batch}"
