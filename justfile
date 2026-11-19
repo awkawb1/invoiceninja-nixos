@@ -14,8 +14,11 @@ _default:
 clean:
     #!/usr/bin/env bash
     rm result > /dev/null 2>&1
+    # Scoped to this project's own disk image, not `pkill qemu` -- a bare
+    # match on the process name would kill *any* QEMU VM on the host (this
+    # one's forwarded port is the only reason we need to kill anything).
+    pkill -f "$(pwd)/nixos.qcow2" > /dev/null 2>&1
     rm nixos.qcow2 > /dev/null 2>&1
-    pkill qemu
     exit 0
 
 [doc('Build virtual machine for testing (proxy: nginx or caddy)')]
