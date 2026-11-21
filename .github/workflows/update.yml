@@ -20,6 +20,8 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Bump invoiceninja/ui to latest upstream versions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/update-versions.sh
 
       - name: Build and run the full NixOS test

@@ -51,7 +51,18 @@ current_ui_version=$(grep -m1 -E '^\s*uiVersion = "' "$pkg" | sed -E 's/.*"([^"]
 
 echo "Current: invoiceninja=$current_main_version ui=$current_ui_version"
 
-latest_main_version=$(curl -sfL https://api.github.com/repos/invoiceninja/invoiceninja/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+# Unauthenticated GitHub API calls are capped at 60/hour *per IP*, which is
+# easy to exhaust on GitHub-hosted runners since that quota is shared across
+# every workflow using that IP, not just this one. Authenticate with
+# GITHUB_TOKEN when available (the token GitHub Actions injects automatically
+# for every run, no extra secret needed) to raise that to 5000/hour; still
+# works unauthenticated for local/`just update` runs where it's unset.
+curl_args=(-sfL)
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  curl_args+=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+fi
+
+latest_main_version=$(curl "${curl_args[@]}" https://api.github.com/repos/invoiceninja/invoiceninja/releases/latest | jq -r '.tag_name' | sed 's/^v//')
 
 # invoiceninja/ui has no GitHub Releases, just date-stamped tags
 # (DD.MM.YYYY.N) -- paginate through all tags and pick the newest by
@@ -60,7 +71,7 @@ latest_main_version=$(curl -sfL https://api.github.com/repos/invoiceninja/invoic
 ui_tags=""
 page=1
 while :; do
-  batch=$(curl -sfL "https://api.github.com/repos/invoiceninja/ui/tags?per_page=100&page=${page}" | jq -r '.[].name')
+  batch=$(curl "${curl_args[@]}" "https://api.github.com/repos/invoiceninja/ui/tags?per_page=100&page=${page}" | jq -r '.[].name')
   [ -z "$batch" ] && break
   ui_tags="${ui_tags}
 ${batch}"

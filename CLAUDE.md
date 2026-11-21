@@ -28,11 +28,14 @@ This project uses `just` (see `justfile`) and Nix directly.
 - `just update` — bumps `package.nix` to the latest upstream invoiceninja/ui versions and recomputes all four
   hashes (`scripts/update-versions.sh`). `just push-cache` builds `.#invoiceninja`/`.#invoiceninja.ui`/the VM test
   check and pushes the results to the `invoiceninja-nixos` cachix cache.
-- `.github/workflows/update.yml` runs both of those automatically every other day (and on manual dispatch) against
+- `.github/workflows/update.yml` runs both of those automatically every Monday (and on manual dispatch) against
   the GitHub mirror, then pushes any version-bump commit **back to this canonical Gitea repo** (not the mirror —
   it's a one-way push-mirror, so a commit made on the GitHub side would never sync back). Needs two secrets on the
   GitHub mirror: `CACHIX_AUTH_TOKEN` and `GITEA_TOKEN` (write access to this repo) — both already configured as of
-  2026-11.
+  2026-11. The version-check step also passes the automatically-injected `GITHUB_TOKEN` through to
+  `update-versions.sh` so its GitHub API calls are authenticated (5000 req/hour instead of 60/hour unauthenticated
+  — the unauthenticated limit is shared across every workflow on the runner's IP, not just this one, and was
+  intermittently exhausting before this).
 
 ### `tests/`
 
@@ -161,3 +164,6 @@ supported.
 - Nix files: 2-space indentation (see `.editorconfig`); Unix line endings; final newline required.
 - Prefer `lib.mkDefault`/`lib.mkIf`/`lib.mkMerge` for module config so downstream users can override cleanly —
   this is used pervasively in `invoiceninja.nix` and should be followed for new options/config.
+- Keep this file and `README.md` up to date as part of any change, not as a follow-up — update whichever of them
+  describes the thing you just changed (module options/behavior/internals → here; the flake's public usage,
+  `just` commands, or quick-start → `README.md`) in the same commit.
