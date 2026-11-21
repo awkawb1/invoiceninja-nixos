@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Also read `MEMORY.md` for standing rules on how to work in this repo.
+
 ## What this repo is
 
 A Nix flake that packages [Invoice Ninja](https://github.com/invoiceninja/invoiceninja) (a PHP/Laravel app with a
@@ -164,6 +166,3 @@ supported.
 - Nix files: 2-space indentation (see `.editorconfig`); Unix line endings; final newline required.
 - Prefer `lib.mkDefault`/`lib.mkIf`/`lib.mkMerge` for module config so downstream users can override cleanly —
   this is used pervasively in `invoiceninja.nix` and should be followed for new options/config.
-- Keep this file and `README.md` up to date as part of any change, not as a follow-up — update whichever of them
-  describes the thing you just changed (module options/behavior/internals → here; the flake's public usage,
-  `just` commands, or quick-start → `README.md`) in the same commit.
