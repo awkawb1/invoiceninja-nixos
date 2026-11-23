@@ -28,13 +28,13 @@ let
     '';
   };
 
-  uiVersion = "18.10.2026.1";
+  uiVersion = "23.11.2026.1";
   uiSrc = fetchFromGitHub {
     name = "${pname}-ui";
     owner = pname;
     repo = "ui";
     tag = uiVersion;
-    hash = "sha256-56szHmIWU9De04Orykp2RxrW0RV87JxB7Y1yvdrSJm4=";
+    hash = "sha256-99Dx0yv0CxMknJA7G9Biio5awENKZNGNmn9lge7n5m4=";
 
     postFetch = ''
       # add missing integrity fields to lockfile
@@ -50,7 +50,7 @@ let
 
     nodejs = nodejs_22;
   
-    npmDepsHash = "sha256-j5XocHvBfMvzNrkaVkTsck2+yPraYWrXQxAbf3EYfIk=";
+    npmDepsHash = "sha256-lfO24YZOvrXTdVsUums2xdZGbX+fSlw4TwLQx/bnnHI=";
 
     preConfigure = ''
       sed -i 's/VITE_IS_TEST=true/VITE_IS_TEST=false/' .env.example
