@@ -14,13 +14,13 @@
 let
   pname = "invoiceninja";
 
-  version = "5.13.56";
+  version = "5.14.0";
   src = fetchFromGitHub {
     name = "${pname}";
     owner = pname;
     repo = pname;
     rev = "v${version}";
-    hash = "sha256-xIWwSr6ycRJYJftkPlmhjJ3/t9jKgoMZVCJ6RXbcE+0=";
+    hash = "sha256-ZF9gq9p6p0QR9U5T9v/76a0O7FxyC93qMdvw4i7PEMw=";
 
     postFetch = ''
       # add missing integrity fields to lockfile
@@ -83,7 +83,7 @@ php82.buildComposerProject (finalAttrs: {
     npmHooks.npmBuildHook
   ];
 
-  vendorHash = "sha256-ZRkmWwlr8tI2DxQTjpKxCw7gNmj3waFww3dSN4ZA5Bc=";
+  vendorHash = "sha256-t6wpC+fLoLnlqdfyacDPm60Ao2qd2lSrlbi+oItgekI=";
 
   # Upstream composer.json has invalid license, webpatser/laravel-countries package is pointing
   # to commit-ref, and php required in require and require-dev
@@ -94,7 +94,7 @@ php82.buildComposerProject (finalAttrs: {
   npmDeps = fetchNpmDeps {
     name = "${pname}-${version}-npm-deps";
     inherit src;
-    hash = "sha256-ditAbluBzs5OV/fCMV5Q4w1amao6ofOlee4YXMpZ37I=";
+    hash = "sha256-ahJXTP4w7OYMSQZv1lSDl1ZO99T7BDObOmEQ01cxtsI=";
   };
 
   preConfigure = ''
